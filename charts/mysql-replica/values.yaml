@@ -1,0 +1,18 @@
+namespace: replica-ns
+image:
+  repository: paid-feature4-mysql
+  tag: dev
+  pullPolicy: IfNotPresent
+mysql:
+  rootPassword: root
+  readOnly: true
+importer:
+  schedule: "*/5 * * * *"
+  applicationOwner: ""
+  application: medium
+  ociAddress: "" # envoy-s:8080
+  stagingNamespace: staging
+  baselineRepo: baseline_app
+  baselineTag: latest
+  deltaRepo: binlog_app
+  deltaTag: ""

@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-replica
+  namespace: {{ .Values.namespace }}
+spec:
+  serviceName: mysql-replica
+  replicas: 1
+  selector:
+    matchLabels: { app: mysql-replica }
+  template:
+    metadata:
+      labels: { app: mysql-replica }
+    spec:
+      containers:
+        - name: mysql
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["docker-entrypoint.sh"]
+          args: ["mysqld", "--gtid-mode=ON", "--enforce-gtid-consistency=ON", "--log-bin", "--server-id=2"]
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: {{ .Values.mysql.rootPassword | quote }}
+          ports:
+            - { name: mysql, containerPort: 3306 }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

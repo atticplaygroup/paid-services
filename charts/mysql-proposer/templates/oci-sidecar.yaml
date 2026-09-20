@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: oci-proposer
+  namespace: {{ .Values.namespace }}
+spec:
+  selector: { app: oci-proposer }
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oci-proposer
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: oci-proposer }
+  template:
+    metadata:
+      labels: { app: oci-proposer }
+    spec:
+      containers:
+        - name: oci
+          image: "oci.example.com/oci:dev"
+          imagePullPolicy: IfNotPresent
+          command: ["bun", "run", "src/index.ts"]
+          env:
+            - name: PORT
+              value: "3000"
+            - name: KVSTORE_ADDRESS
+              value: "http://envoy-s.s-ns.svc.cluster.local:8080"
+            - name: ALS_ADDRESS
+              value: "http://als-s.s-ns.svc.cluster.local:9192"
+            - name: DEDUCTION_AMOUNT
+              value: "1"
+            - name: DISABLE_METERING
+              value: "true"
+            - name: READ_ONLY_MODE
+              value: "false"
+            - name: DPOP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dpop-key
+                  key: dpop-private-key
+          ports:
+            - { name: http, containerPort: 3000 }

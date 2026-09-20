@@ -1,0 +1,27 @@
+{{- if and (or .Values.redis.enabled .Values.redis.seedJobEnabled) .Values.priceSeed.entries }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "meter.fullname" . }}-redis-price-seed
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      containers:
+        - name: price-seed
+          image: redis:8-alpine
+          command: ["/bin/sh", "/seed/seed.sh"]
+          volumeMounts:
+            - { name: seed, mountPath: /seed }
+      volumes:
+        - name: seed
+          configMap:
+            name: {{ include "meter.fullname" . }}-redis-price-seed
+            defaultMode: 0755
+      restartPolicy: Never
+  backoffLimit: 3
+{{- end }}

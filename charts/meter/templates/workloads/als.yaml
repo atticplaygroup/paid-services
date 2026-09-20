@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "meter.fullname" . }}-als
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "meter.fullname" . }}-als }
+  template:
+    metadata:
+      labels: { app: {{ include "meter.fullname" . }}-als }
+    spec:
+      containers:
+        - name: als
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/als"]
+          env:
+            - { name: LISTEN_ADDR, value: ":9192" }
+            - { name: CONNECT_LISTEN_ADDR, value: ":9193" }
+            - { name: BALANCE_BACKEND, value: {{ .Values.balanceBackend | quote }} }
+            - { name: REDIS_ADDR, value: {{ .Values.redis.address | quote }} }
+            {{- if eq .Values.balanceBackend "exchange-db" }}
+            - { name: EXCHANGE_DATABASE_URL, value: {{ .Values.exchangeDatabaseURL | quote }} }
+            {{- end }}
+            - { name: METER_FEEDBACK_ENABLED, value: {{ .Values.als.feedbackEnabled | quote }} }
+            - { name: METER_FEEDBACK_TTL_SECONDS, value: {{ .Values.als.feedbackTTLSeconds | quote }} }
+            {{- if .Values.als.outproxyAddress }}
+            - { name: OUTPROXY_ADDRESS, value: {{ .Values.als.outproxyAddress | quote }} }
+            {{- end }}
+          ports:
+            - { name: grpc, containerPort: 9192 }
+            - { name: connect, containerPort: 9193 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "meter.fullname" . }}-als
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "meter.fullname" . }}-als }
+  ports:
+    - { name: grpc, port: 9192, targetPort: grpc }
+    - { name: connect, port: 9193, targetPort: connect }

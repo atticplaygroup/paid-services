@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "exchange.fullname" . }}-exchange
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "exchange.fullname" . }}-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "exchange.fullname" . }}-exchange }
+  template:
+    metadata:
+      labels: { app: {{ include "exchange.fullname" . }}-exchange }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: exchange
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/exchange"]
+          env:
+            - { name: DATABASE_URL, value: {{ required "exchange.databaseURL must be non-empty" .Values.databaseURL | quote }} }
+            - { name: ACCOUNT_TTL_PRICE, value: {{ .Values.accountTtlPrice | quote }} }
+            - { name: WITHDRAW_RECIPIENT_COUNT, value: {{ .Values.withdrawRecipientCount | quote }} }
+            - { name: WITHDRAW_CHECK_STATUS_COUNT, value: {{ .Values.withdrawCheckStatusCount | quote }} }
+            - { name: SUI_NETWORK, value: {{ .Values.suiNetwork | quote }} }
+            - { name: TOKEN_SIGNING_SEED, value: {{ .Values.tokenSigningSeed | quote }} }
+            - { name: WALLET_MNEMONIC, value: {{ .Values.walletMnemonic | quote }} }
+            - { name: MESSAGE_AUTH_TIMEOUT, value: {{ .Values.messageAuthTimeout | quote }} }
+            - { name: MAX_DEPOSIT_EPOCH_GAP, value: {{ .Values.maxDepositEpochGap | quote }} }
+            - { name: MAX_EXPIRATION_EXTENSION, value: {{ .Values.maxExpirationExtension | quote }} }
+            - { name: SESSION_TIMEOUT, value: {{ .Values.sessionTimeout | quote }} }
+            - { name: TOKEN_TTL, value: {{ .Values.tokenTtl | quote }} }
+            - { name: GRPC_PORT, value: {{ .Values.grpcPort | quote }} }
+            - { name: USER_ID_HEADER_NAME, value: {{ .Values.userIdHeaderName | quote }} }
+            - { name: REQUEST_ID_HEADER_NAME, value: {{ .Values.requestIdHeaderName | quote }} }
+            - { name: TOKEN_COIN_TYPE, value: {{ .Values.tokenCoinType | quote }} }
+            - { name: TOKEN_COIN_ENVIRONMENT, value: {{ .Values.tokenCoinEnvironment | quote }} }
+          ports:
+            - { name: http, containerPort: {{ .Values.grpcPort }} }
+          volumeMounts:
+            - { name: exchange-env, mountPath: /.env, subPath: .env }
+      volumes:
+        - name: exchange-env
+          configMap: { name: {{ include "exchange.fullname" . }}-env }

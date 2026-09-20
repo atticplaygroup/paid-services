@@ -1,0 +1,62 @@
+image:
+  repository: oci.example.com/infrastructure
+  tag: dev
+  pullPolicy: IfNotPresent
+envoyImage:
+  repository: envoyproxy/envoy
+  tag: v1.38.3
+  pullPolicy: IfNotPresent
+fullnameOverride: ""
+databaseURL: "" # postgres://postgres:postgres@exchange-postgres:5432/paid?sslmode=disable
+accountTtlPrice: "0"
+withdrawRecipientCount: "10"
+withdrawCheckStatusCount: "10"
+suiNetwork: devnet
+tokenSigningSeed: "0x0000000000000000000000000000000000000000000000000000000000000001"
+walletMnemonic: "test test test test test test test test test test test junk"
+messageAuthTimeout: "10s"
+maxDepositEpochGap: "10"
+maxExpirationExtension: "86400"
+sessionTimeout: "10m"
+tokenTtl: "10m"
+grpcPort: 8080
+userIdHeaderName: x-user-id
+requestIdHeaderName: x-request-id
+tokenCoinType: 1
+tokenCoinEnvironment: 4
+env:
+  accountDomains: []
+  # - account.exchange.example.com
+  # - account.envoy
+  providerManifest: "{}"
+meter:
+  fullnameOverride: exchange-meter
+  balanceBackend: exchange-db
+  exchangeDatabaseURL: ""
+  redis:
+    enabled: false
+    seedJobEnabled: false
+    host: "" # exchange-redis
+    address: "" # exchange-redis:6379
+  account:
+    validExchangeHosts: []
+    # - exchange:8080
+    validAudience: ""
+    validCoinType: 1
+    validCoinEnvironment: 4
+    faucetMode: false
+  als:
+    feedbackEnabled: false
+    feedbackTTLSeconds: 10
+    outproxyAddress: ""
+  authz:
+    allowZeroBalanceHTUs:
+      - /kvstore.v1.MeteredStorageService/Ping
+      - /account.v1.AccountService/DepositOrCreateAccount
+      - /account.v1.AccountService/CreditBalance
+      - /exchange.v1.ExchangeService/Ping
+      - /exchange.v1.ExchangeService/ListPaymentMethods
+      - /exchange.v1.ExchangeService/GetChallenge
+      - /exchange.v1.ExchangeService/Deposit
+  priceSeed:
+    entries: []

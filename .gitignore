@@ -1,0 +1,13 @@
+infrastructure/bin/
+toolkit
+node_modules/
+**/node_modules/
+**/.env
+applications/oci/dist/
+applications/cashier/dist/
+applications/outproxy/dist/
+testing/.env
+/tmp/
+*.jsonkey
+charts/*/charts/*.tgz
+*.tgz

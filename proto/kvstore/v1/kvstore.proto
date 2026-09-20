@@ -1,0 +1,252 @@
+syntax = "proto3";
+
+option go_package = "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/kvstore/v1;kvstore";
+
+import "google/protobuf/duration.proto";
+import "buf/validate/validate.proto";
+
+package kvstore.v1;
+
+enum ConnectionSource {
+  CONNECTION_SOURCE_UNSPECIFIED = 0;
+  CONNECTION_SOURCE_GENERAL = 1;
+  CONNECTION_SOURCE_SPECIFIC = 2;
+  CONNECTION_SOURCE_INTERNAL = 3;
+}
+
+enum AuthorizationMode {
+  AUTHORIZATION_MODE_UNSPECIFIED = 0;
+  // Reserved for principal→resource ACLs. Not implemented.
+  AUTHORIZATION_MODE_ACL = 1;
+  // Content-addressed under value/public/{cid}. Key must equal CID. Any session may read/extend.
+  AUTHORIZATION_MODE_CONTENT_ADDRESSED = 2;
+  // Named under value/{owner}/{key}. Read + write: owner only.
+  AUTHORIZATION_MODE_SELF_READ = 3;
+  // Named under value/{owner}/{key}. Read: any session. Write: owner only.
+  AUTHORIZATION_MODE_PUBLIC_READ = 4;
+}
+
+enum Codec {
+  CODEC_UNSPECIFIED = 0;
+  CODEC_RAW = 1;
+  CODEC_DAG_PB = 2;
+}
+
+message Usage {
+  enum MeterType {
+    METER_TYPE_UNSPECIFIED = 0;
+    METER_TYPE_GET = 1;
+    METER_TYPE_SET = 2;
+    METER_TYPE_PEAK_MEMORY_BYTES = 3;
+    METER_TYPE_STORAGE_BYTES = 4;
+    METER_TYPE_INGRESS_BYTES = 5;
+    METER_TYPE_EGRESS_BYTES = 6;
+    METER_TYPE_DURATION_MS = 7;
+  }
+  MeterType meter_type = 1 [(buf.validate.field).enum.defined_only = true];
+  StorageBackend storage_backend = 2 [
+    (buf.validate.field).enum = {
+      defined_only: true
+    }
+  ];
+  int64 unit_count = 3 [(buf.validate.field).int64.gte = 0];
+}
+
+service MeteredStorageService {
+
+  rpc CreateCASValue(CreateCASValueRequest) returns (CreateCASValueResponse) {
+  }
+
+  rpc GetCASValue(GetCASValueRequest) returns (GetCASValueResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+
+  rpc CreateProtectedValueAnchor(CreateProtectedValueAnchorRequest) returns (CreateProtectedValueAnchorResponse) {
+  }
+
+  rpc GetProtectedValueAnchor(GetProtectedValueAnchorRequest) returns (GetProtectedValueAnchorResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+
+  rpc ProlongValue(ProlongValueRequest) returns (ProlongValueResponse) {
+  }
+
+  rpc Ping(PingRequest) returns (PingResponse) {
+  }
+
+}
+
+
+enum StorageBackend {
+  STORAGE_BACKEND_UNSPECIFIED = 0;
+  STORAGE_BACKEND_REDIS = 1;
+  STORAGE_BACKEND_DISK = 2;
+  STORAGE_BACKEND_BLOB_STORAGE = 3;
+}
+
+message ValueMetadata {
+  AuthorizationMode authorization_mode = 1 [
+    (buf.validate.field).enum = {
+      defined_only: true
+    }
+  ];
+  Codec codec = 2 [
+    (buf.validate.field).enum = {
+      defined_only: true
+    }
+  ];
+}
+
+message PingRequest {
+  // To test buf validate takes effect or not
+  int64 dummy = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int64.gt = 0
+  ];
+}
+
+message PingResponse {
+  string pong = 1;
+}
+
+message Anchor {
+  string owner = 1 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  string key = 2 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  string cid = 3 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  int64 revision = 4 [
+    (buf.validate.field).int64.gt = 0
+  ];
+  string owner_jwk = 5 [
+    (buf.validate.field).string = {
+      max_len: 4096
+    }
+  ];
+  string signature = 6 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 8192
+    }
+  ];
+}
+
+message CreateCASValueRequest {
+  StorageBackend storage_backend = 1 [
+    (buf.validate.field).enum = {
+      defined_only: true
+    }
+  ];
+  Codec codec = 2 [(buf.validate.field).enum.defined_only = true];
+  google.protobuf.Duration ttl = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).duration = {
+      gte: {seconds: 1}
+      lte: {seconds: 31536000}
+    }
+  ];
+  string key = 4 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  bytes value = 5 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).bytes.max_len = 1073741824
+  ];
+}
+
+message GetCASValueRequest {
+  string key = 1 [(buf.validate.field).string.pattern = "[A-Za-z0-9]{59}"];
+}
+
+message CreateCASValueResponse {
+  string name = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.pattern = "values/[0-9a-z]{59}"
+  ];
+  google.protobuf.Duration ttl = 2;
+}
+
+message GetCASValueResponse {
+  bytes value = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).bytes.max_len = 1073741824
+  ];
+}
+
+message CreateProtectedValueAnchorRequest {
+  Anchor anchor = 1 [(buf.validate.field).required = true];
+}
+
+message CreateProtectedValueAnchorResponse {
+  Anchor anchor = 1 [(buf.validate.field).required = true];
+}
+
+message GetProtectedValueAnchorRequest {
+  string owner = 1 [(buf.validate.field).required = true];
+  string key = 2 [(buf.validate.field).required = true];
+}
+
+message GetProtectedValueAnchorResponse {
+  Anchor anchor = 1 [(buf.validate.field).required = true];
+}
+
+message ProlongValueRequest {
+  StorageBackend storage_backend = 1 [(buf.validate.field).enum.defined_only = true ];
+  string owner = 2 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  string key = 3 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  google.protobuf.Duration ttl = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).duration.gte = {
+        seconds: 1
+    },
+    (buf.validate.field).duration.lte = {
+        seconds: 31536000 // 1 year ttl but you can prolong multiple times
+    }
+  ];
+  int64 max_size = 5 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int64.gt = 0
+  ];
+}
+
+message ProlongValueResponse {
+  string owner = 1 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  string key = 2 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  google.protobuf.Duration ttl = 3;
+}

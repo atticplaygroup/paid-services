@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kvstore.fullname" . }}-kvstore
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "kvstore.fullname" . }}-kvstore }
+  template:
+    metadata:
+      labels: { app: {{ include "kvstore.fullname" . }}-kvstore }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: kvstore
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/meter", "kvstore"]
+          env:
+            - { name: MINIO_ENDPOINT, value: {{ .Values.minio.endpoint | quote }} }
+            - { name: MINIO_BUCKET, value: {{ .Values.minio.bucket | quote }} }
+            - { name: MINIO_ACCESS_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.fullname" . }}-minio, key: MINIO_ROOT_USER } } }
+            - { name: MINIO_SECRET_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.fullname" . }}-minio, key: MINIO_ROOT_PASSWORD } } }
+          ports:
+            - { name: http, containerPort: 8080 }
+          volumeMounts:
+            - { name: kvstore-config, mountPath: /.env, subPath: .env }
+      volumes:
+        - name: kvstore-config
+          configMap: { name: {{ include "kvstore.fullname" . }}-kvstore-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kvstore.fullname" . }}-kvstore
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "kvstore.fullname" . }}-kvstore }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

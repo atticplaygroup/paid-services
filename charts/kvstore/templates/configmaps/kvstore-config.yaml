@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kvstore.fullname" . }}-kvstore-config
+  namespace: {{ .Release.Namespace }}
+data:
+  .env: |
+    GRPC_PORT=8080
+    REDIS_HOST={{ include "kvstore.fullname" . }}-redis
+    REDIS_PORT=6379
+    BILLING_SERVER_ADDRESS={{ .Values.meter.fullnameOverride }}-als:9193
+    USER_ID_HEADER_NAME=x-user-id
+    REQUEST_ID_HEADER_NAME=x-request-id
+    VALID_EXCHANGE_HOSTS=exchange:8080
+    VALID_AUDIENCE={{ required "kvstore.env.validAudience must be non-empty" .Values.env.validAudience }}
+    VALID_COIN_TYPE={{ .Values.env.validCoinType }}
+    VALID_COIN_ENVIRONMENT={{ .Values.env.validCoinEnvironment }}
+    MINIO_ENDPOINT={{ required "kvstore.minio.endpoint must be non-empty" .Values.minio.endpoint }}
+    MINIO_BUCKET={{ .Values.minio.bucket }}
+    FAUCET_MODE={{ .Values.env.faucetMode }}

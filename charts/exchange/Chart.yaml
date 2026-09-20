@@ -1,0 +1,10 @@
+apiVersion: v2
+name: exchange
+description: PAID usage token exchange backed by its account database
+type: application
+version: 0.1.0
+appVersion: "dev"
+dependencies:
+  - name: meter
+    version: 0.1.0
+    repository: "file://../meter"

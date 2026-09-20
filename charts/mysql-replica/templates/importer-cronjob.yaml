@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-replica-importer
+  namespace: {{ .Values.namespace }}
+spec:
+  schedule: "{{ .Values.importer.schedule }}"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: importer
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/usr/local/bin/import"]
+              env:
+                - name: MYSQL_HOST
+                  value: "{{ .Values.mysql.host | default "mysql-replica" }}"
+                - name: MYSQL_PORT
+                  value: "3306"
+                - name: MYSQL_USER
+                  value: "root"
+                - name: MYSQL_PASSWORD
+                  value: "{{ .Values.mysql.rootPassword }}"
+                - name: OCI_ADDRESS
+                  value: "{{ required "mysql-replica.importer.ociAddress must be non-empty" .Values.importer.ociAddress }}"
+                - name: BASELINE_REPO
+                  value: "{{ .Values.importer.baselineRepo }}"
+                - name: BASELINE_TAG
+                  value: "{{ .Values.importer.baselineTag }}"
+                - name: DELTA_REPO
+                  value: "{{ .Values.importer.deltaRepo }}"
+                - name: DELTA_TAG
+                  value: "{{ .Values.importer.deltaTag }}"
+                - name: OUTPUT_DIR
+                  value: "/tmp/feature4-import"

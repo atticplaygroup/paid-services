@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "meter.fullname" . }}-authz-http
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "meter.fullname" . }}-authz-http }
+  template:
+    metadata:
+      labels: { app: {{ include "meter.fullname" . }}-authz-http }
+    spec:
+      containers:
+        - name: authz-http
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/authz-http"]
+          env:
+            - { name: LISTEN_ADDR, value: ":9192" }
+            - { name: BALANCE_BACKEND, value: {{ .Values.balanceBackend | quote }} }
+            - { name: REDIS_ADDR, value: {{ .Values.redis.address | quote }} }
+            {{- if eq .Values.balanceBackend "exchange-db" }}
+            - { name: EXCHANGE_DATABASE_URL, value: {{ .Values.exchangeDatabaseURL | quote }} }
+            {{- end }}
+            - { name: ALLOW_ZERO_BALANCE_HTUS, value: {{ join "," .Values.authz.allowZeroBalanceHTUs | quote }} }
+          ports:
+            - { name: grpc, containerPort: 9192 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "meter.fullname" . }}-authz-http
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "meter.fullname" . }}-authz-http }
+  ports:
+    - { name: grpc, port: 9192, targetPort: grpc }

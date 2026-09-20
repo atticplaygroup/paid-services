@@ -1,0 +1,28 @@
+#!/bin/bash
+set -euo pipefail
+
+required=(MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASSWORD BASELINE_DIR)
+for var in "${required[@]}"; do
+  [[ -n "${!var:-}" ]] || { echo "missing env: $var" >&2; exit 1; }
+done
+
+[[ -f "$BASELINE_DIR/boundary.json" ]] || { echo "missing boundary.json" >&2; exit 1; }
+
+export MYSQL_PWD="$MYSQL_PASSWORD"
+echo "import baseline from $BASELINE_DIR into $MYSQL_HOST:$MYSQL_PORT"
+
+GTID=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse "SELECT JSON_UNQUOTE(JSON_EXTRACT(@@GLOBAL.gtid_executed,'$'))" 2>/dev/null || true)
+if [[ -f "$BASELINE_DIR/boundary.json" ]] && command -v jq >/dev/null 2>&1; then
+  GTID=$(jq -r .gtid_executed "$BASELINE_DIR/boundary.json")
+fi
+
+if [[ -f "$BASELINE_DIR/dump/dump.sql" ]]; then
+  mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" < "$BASELINE_DIR/dump/dump.sql"
+else
+  echo "no dump.sql found, looking for mysqlsh dump directory" >&2
+fi
+
+if [[ -n "$GTID" ]]; then
+  mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -e "SET GLOBAL gtid_purged='$GTID'" || true
+fi
+echo "baseline import complete"

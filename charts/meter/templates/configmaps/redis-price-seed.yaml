@@ -1,0 +1,18 @@
+{{- if and (or .Values.redis.enabled .Values.redis.seedJobEnabled) .Values.priceSeed.entries }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "meter.fullname" . }}-redis-price-seed
+  namespace: {{ .Release.Namespace }}
+data:
+  seed.sh: |
+    #!/bin/sh
+    set -eu
+    {{- $redisHost := default (include "meter.fullname" . | printf "%s-redis") .Values.redis.host }}
+    until redis-cli -h {{ $redisHost }} ping; do sleep 1; done
+    {{- with .Values.priceSeed }}
+    {{- range .entries }}
+    redis-cli -h {{ $redisHost }} HSET {{ .key }}{{ range $field, $value := .fields }} {{ $field }} {{ $value }}{{ end }}
+    {{- end }}
+    {{- end }}
+{{- end }}

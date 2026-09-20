@@ -1,0 +1,27 @@
+#!/bin/bash
+set -euo pipefail
+
+required=(MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASSWORD MYSQL_EXPORT_SCHEMAS OUTPUT_DIR)
+for var in "${required[@]}"; do
+  [[ -n "${!var:-}" ]] || { echo "missing env: $var" >&2; exit 1; }
+done
+
+mkdir -p "$OUTPUT_DIR/dump"
+export MYSQL_PWD="$MYSQL_PASSWORD"
+
+GTID_EXECUTED=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse "SELECT @@GLOBAL.gtid_executed")
+GTID_PURGED=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse "SELECT @@GLOBAL.gtid_purged")
+SHOW_MASTER=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse "SHOW MASTER STATUS")
+BINLOG_FILE=$(echo "$SHOW_MASTER" | awk '{print $1}')
+BINLOG_POS=$(echo "$SHOW_MASTER" | awk '{print $2}')
+
+mysqldump -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" \
+  --databases $MYSQL_EXPORT_SCHEMAS \
+  --single-transaction --set-gtid-purged=OFF --triggers --routines --events \
+  > "$OUTPUT_DIR/dump/dump.sql"
+
+cat > "$OUTPUT_DIR/boundary.json" <<JSON
+{"gtid_executed":"$GTID_EXECUTED","gtid_purged":"$GTID_PURGED","binlog_file":"$BINLOG_FILE","binlog_position":$BINLOG_POS,"schemas":"$MYSQL_EXPORT_SCHEMAS"}
+JSON
+
+echo "baseline export complete: $OUTPUT_DIR"

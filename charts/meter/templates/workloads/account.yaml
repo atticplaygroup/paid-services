@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "meter.fullname" . }}-account
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "meter.fullname" . }}-account }
+  template:
+    metadata:
+      labels: { app: {{ include "meter.fullname" . }}-account }
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps/account-config.yaml") . | sha256sum }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: account
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/account"]
+          ports:
+            - { name: http, containerPort: 8080 }
+          volumeMounts:
+            - { name: account-config, mountPath: /.env, subPath: .env }
+      volumes:
+        - name: account-config
+          configMap: { name: {{ include "meter.fullname" . }}-account-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "meter.fullname" . }}-account
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "meter.fullname" . }}-account }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

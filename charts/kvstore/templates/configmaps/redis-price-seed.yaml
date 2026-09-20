@@ -1,0 +1,14 @@
+{{- if .Values.env.priceSeed }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kvstore.fullname" . }}-price-seed
+data:
+  seed.sh: |
+    #!/bin/sh
+    set -eu
+    until redis-cli -h {{ required "kvstore.redisAddress must be non-empty" .Values.redisAddress | quote }} ping >/dev/null; do sleep 1; done
+    {{- range .Values.env.priceSeed }}
+    redis-cli -h {{ required "kvstore.redisAddress must be non-empty" $.Values.redisAddress | quote }} HSET {{ .key | quote }}{{ range .fields }} {{ .name | quote }} {{ .value | quote }}{{ end }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,155 @@
+static_resources:
+  listeners:
+    - name: ingress
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 8080 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                generate_request_id: true
+                preserve_external_request_id: true
+                access_log:
+                  - name: envoy.access_loggers.http_grpc
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
+                      common_config:
+                        log_name: {{ include "exchange.fullname" . }}-meter-als
+                        grpc_service:
+                          envoy_grpc: { cluster_name: {{ include "exchange.fullname" . }}-meter-als }
+                      additional_request_headers_to_log:
+                        - x-external-request-id
+                        - x-user-id
+                        - x-request-id
+                  - name: envoy.access_loggers.file
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+                      path: /dev/stdout
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: account
+                      domains: {{ include "exchange.requiredAccountDomains" . }}
+                      routes:
+                        - match: { prefix: "/" }
+                          route: { cluster: account, timeout: 120s }
+                    - name: default
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/.well-known/jwks.json"
+                          direct_response:
+                            status: 200
+                            body:
+                              inline_string: "{}"
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+                        - match:
+                            prefix: "/.well-known/paid_provider_manifest.json"
+                          direct_response:
+                            status: 200
+                            body:
+                                  inline_string: {{ printf "%s" .Values.env.providerManifest | quote }}
+                          typed_per_filter_config:
+                            envoy.filters.http.ext_authz:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                              disabled: true
+                        - match: { prefix: "/account.v1.AccountService/" }
+                          route: { cluster: account, timeout: 120s }
+                        - match: { prefix: "/v1/faucet:credit" }
+                          route: { cluster: account, timeout: 120s }
+                        - match: { prefix: "/" }
+                          route: { cluster: exchange, timeout: 120s }
+                http_filters:
+                  - name: envoy.filters.http.ext_authz
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                      transport_api_version: V3
+                      grpc_service:
+                        envoy_grpc: { cluster_name: authz-http }
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: {{ include "exchange.fullname" . }}-meter-als
+      connect_timeout: 2s
+      type: STRICT_DNS
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: {{ include "exchange.fullname" . }}-meter-als
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-als, port_value: 9192 }
+    - name: {{ include "exchange.fullname" . }}-meter-als-connect
+      connect_timeout: 2s
+      type: STRICT_DNS
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: {{ include "exchange.fullname" . }}-meter-als-connect
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-als, port_value: 9193 }
+    - name: exchange
+      connect_timeout: 2s
+      type: STRICT_DNS
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: exchange
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: {{ include "exchange.fullname" . }}-exchange, port_value: 8080 }
+    - name: account
+      connect_timeout: 2s
+      type: STRICT_DNS
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: account
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-account, port_value: 8080 }
+    - name: authz-http
+      connect_timeout: 2s
+      type: STRICT_DNS
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: authz-http
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-authz-http, port_value: 9192 }
+admin:
+  address:
+    socket_address: { address: 0.0.0.0, port_value: 9901 }

@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+option go_package = "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/cashier/v1;cashier";
+
+package cashier.v1;
+
+import "buf/validate/validate.proto";
+import "exchange/v1/exchange.proto";
+
+service CashierService {
+  rpc GetAccessToken(GetAccessTokenRequest) returns (GetAccessTokenResponse);
+  rpc GetFunds(GetFundsRequest) returns (GetFundsResponse);
+}
+
+message GetAccessTokenRequest {
+  string htu = 1 [(buf.validate.field).string.uri = true];
+  string htm = 2 [(buf.validate.field).string = {
+    in: ["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH"]
+  }];
+  exchange.v1.PaymentCoin preferred_payment_coin = 3 [(buf.validate.field).enum.defined_only = true];
+  exchange.v1.PaymentEnvironment preferred_payment_environment = 4 [(buf.validate.field).enum.defined_only = true];
+}
+
+message GetAccessTokenResponse {
+  string access_token = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetFundsRequest {
+  exchange.v1.PaymentCoin preferred_payment_coin = 1 [(buf.validate.field).enum.defined_only = true];
+  exchange.v1.PaymentEnvironment preferred_payment_environment = 2 [(buf.validate.field).enum.defined_only = true];
+}
+
+message GetFundsResponse {}
+
+message ProviderManifest {
+  string version = 1 [(buf.validate.field).string.const = "v1"];
+  string id = 2 [(buf.validate.field).string.pattern = "^[a-z2-7]{59}$"];
+  repeated ProviderExchange exchanges = 3 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 255
+  }];
+  string signature = 4 [(buf.validate.field).string.min_len = 1];
+}
+
+message ProviderExchange {
+  string id = 1 [(buf.validate.field).string.pattern = "^[a-z2-7]{59}$"];
+  repeated string hosts = 2 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 255
+    items: {
+      string: {
+        uri: true
+      }
+    }
+  }];
+  exchange.v1.PaymentCoin payment_coin = 3 [(buf.validate.field).enum.defined_only = true];
+  exchange.v1.PaymentEnvironment payment_environment = 4 [(buf.validate.field).enum.defined_only = true];
+}

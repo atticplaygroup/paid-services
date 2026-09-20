@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kvstore.fullname" . }}-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "kvstore.fullname" . }}-envoy }
+  template:
+    metadata:
+      labels: { app: {{ include "kvstore.fullname" . }}-envoy }
+    spec:
+      containers:
+        - name: envoy
+          image: "{{ .Values.envoyImage.repository }}:{{ .Values.envoyImage.tag }}"
+          imagePullPolicy: {{ .Values.envoyImage.pullPolicy }}
+          args: ["-c", "/etc/envoy/envoy.yaml"]
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: admin, containerPort: 9901 }
+          volumeMounts:
+            - { name: envoy-config, mountPath: /etc/envoy }
+      volumes:
+        - name: envoy-config
+          configMap: { name: {{ include "kvstore.fullname" . }}-envoy-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kvstore.fullname" . }}-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "kvstore.fullname" . }}-envoy }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

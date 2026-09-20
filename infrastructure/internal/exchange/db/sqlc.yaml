@@ -1,0 +1,16 @@
+version: "2"
+sql:
+  - schema: "migrations"
+    queries: "query"
+    engine: "postgresql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "sqlc"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        overrides:
+          - db_type: "timestamptz"
+            go_type: "github.com/jackc/pgx/v5/pgtype.Timestamptz"
+          - db_type: "interval"
+            go_type: "github.com/jackc/pgx/v5/pgtype.Interval"

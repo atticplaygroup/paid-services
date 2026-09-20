@@ -1,0 +1,21 @@
+namespace: proposer-ns
+image:
+  repository: paid-feature4-mysql
+  tag: dev
+  pullPolicy: IfNotPresent
+mysql:
+  rootPassword: root
+  database: app
+  exportedSchemas:
+    - user_profile
+  gtidMode: ON
+  binlogFormat: ROW
+  binlogDoDb: ""
+packer:
+  schedule: "*/5 * * * *"
+  baselineRepo: baseline_app
+  deltaRepo: binlog_app
+  ociAddress: "" # oci-proposer:3000
+  application: medium
+  manifestRepo: app-manifests
+  tag: v1.0.0

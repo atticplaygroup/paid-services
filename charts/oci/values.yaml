@@ -1,0 +1,20 @@
+# TODO(prod): pin digests; no mutable tags in examples
+ociImage:
+  repository: oci.example.com/oci
+  tag: dev
+  pullPolicy: IfNotPresent
+fullnameOverride: ""
+env:
+  kvstoreAddress: "" # kvstoreAddress: http://envoy:8080
+  alsAddress: "" # alsAddress: meter-als:9193
+  alsLogName: oci_als
+  accountDomains: []
+  deductionAmount: 1
+  readOnlyMode: false
+meter:
+  fullnameOverride: meter
+  redis:
+    enabled: false
+    seedJobEnabled: true
+    host: "" # host: party-redis
+    address: "" # address: party-redis:6379

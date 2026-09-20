@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "exchange.fullname" . }}-exchange
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "exchange.fullname" . }}-exchange
+spec:
+  selector: { app: {{ include "exchange.fullname" . }}-exchange }
+  ports:
+    - { name: http, port: 8080, targetPort: {{ .Values.grpcPort }} }

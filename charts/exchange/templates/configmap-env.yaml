@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "exchange.fullname" . }}-env
+  namespace: {{ .Release.Namespace }}
+data:
+  .env: |
+    GRPC_PORT={{ .Values.grpcPort }}
+    DATABASE_URL={{ required "exchange.databaseURL must be non-empty" .Values.databaseURL }}
+    ACCOUNT_TTL_PRICE={{ .Values.accountTtlPrice }}
+    WITHDRAW_RECIPIENT_COUNT={{ .Values.withdrawRecipientCount }}
+    WITHDRAW_CHECK_STATUS_COUNT={{ .Values.withdrawCheckStatusCount }}
+    SUI_NETWORK={{ .Values.suiNetwork }}
+    TOKEN_SIGNING_SEED={{ .Values.tokenSigningSeed }}
+    WALLET_MNEMONIC={{ .Values.walletMnemonic | quote }}
+    MESSAGE_AUTH_TIMEOUT={{ .Values.messageAuthTimeout }}
+    MAX_DEPOSIT_EPOCH_GAP={{ .Values.maxDepositEpochGap }}
+    MAX_EXPIRATION_EXTENSION={{ .Values.maxExpirationExtension }}
+    SESSION_TIMEOUT={{ .Values.sessionTimeout }}
+    TOKEN_TTL={{ .Values.tokenTtl }}
+    USER_ID_HEADER_NAME={{ .Values.userIdHeaderName }}
+    REQUEST_ID_HEADER_NAME={{ .Values.requestIdHeaderName }}
+    TOKEN_COIN_TYPE={{ .Values.tokenCoinType }}
+    TOKEN_COIN_ENVIRONMENT={{ .Values.tokenCoinEnvironment }}
+    VALID_AUDIENCE={{ .Values.meter.account.validAudience }}

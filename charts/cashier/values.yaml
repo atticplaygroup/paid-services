@@ -1,0 +1,16 @@
+image:
+  repository: 172.19.0.2:30500/cashier
+  tag: dev
+  pullPolicy: IfNotPresent
+fullnameOverride: ""
+port: 8080
+insecure: false
+accounts: '[]'
+accountSalt: cashier-account-salt
+defaultChainDepositAmount: "100000000"
+defaultProviderDepositAmount: 100000
+redeemExchangeTokens: true
+validExchangeHosts: "" # exchange:8080
+validAudience: ""
+accountOriginOverrides: '{}'
+exchangeOriginOverrides: '{}'

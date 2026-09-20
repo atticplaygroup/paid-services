@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+
+required=(MANIFEST_PATH OCI_ADDRESS MANIFEST_REPO MANIFEST_TAG OWNER)
+for var in "${required[@]}"; do
+  [[ -n "${!var:-}" ]] || { echo "missing env: $var" >&2; exit 1; }
+done
+
+[[ -f "$MANIFEST_PATH" ]] || { echo "manifest not found: $MANIFEST_PATH" >&2; exit 1; }
+
+oras push --plain-http "${OCI_ADDRESS}/${MANIFEST_REPO}:${MANIFEST_TAG}" \
+  --artifact-type application/vnd.paid.mysql.manifest.v1+yaml \
+  "$MANIFEST_PATH:application/yaml"
+
+echo "manifest published: $OCI_ADDRESS/$MANIFEST_REPO:$MANIFEST_TAG"

@@ -1,0 +1,8 @@
+{
+  "name": "testing",
+  "type": "module",
+  "dependencies": {
+    "dpop": "^2.1.1",
+    "multiformats": "^14.0.5"
+  }
+}

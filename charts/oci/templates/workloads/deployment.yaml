@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oci.name" . }}-oci
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "oci.name" . }}-oci }
+  template:
+    metadata:
+      labels: { app: {{ include "oci.name" . }}-oci }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: oci
+          image: "{{ .Values.ociImage.repository }}:{{ .Values.ociImage.tag }}"
+          imagePullPolicy: {{ .Values.ociImage.pullPolicy }}
+          command: ["bun", "run", "src/index.ts"]
+          env:
+            - name: PORT
+              value: "3000"
+            - name: KVSTORE_ADDRESS
+              value: {{ required "oci.env.kvstoreAddress must be non-empty" .Values.env.kvstoreAddress | quote }}
+            - name: ALS_ADDRESS
+              value: "http://{{ required "oci.env.alsAddress must be non-empty" .Values.env.alsAddress }}"
+            - name: DEDUCTION_AMOUNT
+              value: "{{ .Values.env.deductionAmount }}"
+            - name: READ_ONLY_MODE
+              value: {{ .Values.env.readOnlyMode | quote }}
+            - name: DPOP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dpop-key
+                  key: dpop-private-key
+          ports:
+            - { name: http, containerPort: 3000 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "oci.name" . }}-oci
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "oci.name" . }}-oci }
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+---

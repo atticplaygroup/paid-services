@@ -1,0 +1,10 @@
+apiVersion: v2
+name: oci
+description: Reusable PAID OCI registry stack with optional gateway, metering dependency, .
+type: application
+version: 0.1.0
+appVersion: "dev"
+dependencies:
+  - name: meter
+    version: 0.1.0
+    repository: "file://../meter"

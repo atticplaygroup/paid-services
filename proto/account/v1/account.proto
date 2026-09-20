@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+option go_package = "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/account/v1;account";
+
+import "google/protobuf/timestamp.proto";
+import "buf/validate/validate.proto";
+
+package account.v1;
+
+message Account {
+  string account_id = 1 [
+    (buf.validate.field).string.pattern = "^[a-z2-7]{59}$"
+  ];
+  int64 balance = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int64.gte = 0
+  ];
+  google.protobuf.Timestamp expire_time = 3;
+}
+
+enum JwtUsage {
+  JWT_USAGE_UNSPECIFIED = 0;
+  JWT_USAGE_DEPOSIT = 1;
+}
+
+message DepositOrCreateAccountRequest {
+  string jwt = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+}
+
+message DepositOrCreateAccountResponse {
+  Account account = 1 [
+    (buf.validate.field).required = true
+  ];
+}
+
+message GetBalanceRequest {}
+
+message GetBalanceResponse {
+  int64 balance = 2 [
+    (buf.validate.field).int64.gte = 0
+  ];
+}
+
+message GetAccountRequest {}
+
+message GetAccountResponse {
+  Account account = 1 [(buf.validate.field).required = true];
+}
+
+message CreditBalanceRequest {
+  string user_id = 1 [
+    (buf.validate.field).string.pattern = "^[a-z2-7]{59}$"
+  ];
+  int64 amount = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).int64.gt = 0
+  ];
+}
+
+message CreditBalanceResponse {
+  Account account = 1 [
+    (buf.validate.field).required = true
+  ];
+}
+
+message MeterFeedback {
+  int32 coin_type = 1 [(buf.validate.field).required = true];
+  int32 coin_environment = 2 [(buf.validate.field).required = true];
+  int64 total_price = 3 [(buf.validate.field).int64.gte = 0];
+  map<int32, int64> details = 4 [
+    (buf.validate.field).map = {
+      max_pairs: 255
+      keys: {
+        int32: {
+          gte: 0
+        }
+      }
+      values: {
+        int64: {
+          gte: 0
+        }
+      }
+    }
+  ];
+}
+
+message GetMeterFeedbackRequest {
+  string external_request_id = 1 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+}
+
+message GetMeterFeedbackResponse {
+  MeterFeedback feedback = 1;
+}
+
+service AccountService {
+  rpc DepositOrCreateAccount(DepositOrCreateAccountRequest) returns (DepositOrCreateAccountResponse) {
+  }
+
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {
+  }
+
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse) {
+  }
+
+  rpc CreditBalance(CreditBalanceRequest) returns (CreditBalanceResponse) {
+  }
+
+  rpc GetMeterFeedback(GetMeterFeedbackRequest) returns (GetMeterFeedbackResponse) {
+  }
+}

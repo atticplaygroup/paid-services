@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euo pipefail
+
+required=(MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASSWORD DELTA_DIR)
+for var in "${required[@]}"; do
+  [[ -n "${!var:-}" ]] || { echo "missing env: $var" >&2; exit 1; }
+done
+
+[[ -f "$DELTA_DIR/boundary.json" ]] || { echo "missing boundary.json" >&2; exit 1; }
+
+export MYSQL_PWD="$MYSQL_PASSWORD"
+echo "replay binlogs from $DELTA_DIR into $MYSQL_HOST:$MYSQL_PORT"
+
+CURRENT_GTID=$(mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse "SELECT @@GLOBAL.gtid_executed")
+
+BINLOG_FILES=("$DELTA_DIR"/*.000001 "$DELTA_DIR"/*.000002 "$DELTA_DIR"/*.000003 "$DELTA_DIR"/*.000004 "$DELTA_DIR"/*.000005 "$DELTA_DIR"/*.000006 "$DELTA_DIR"/*.000007 "$DELTA_DIR"/*.000008 "$DELTA_DIR"/*.000009 "$DELTA_DIR"/*.000010)
+for BINLOG in "${BINLOG_FILES[@]}"; do
+  [[ -f "$BINLOG" ]] || continue
+  echo "replaying: $BINLOG"
+  mysqlbinlog --exclude-gtids="$CURRENT_GTID" "$BINLOG" 2>/dev/null | \
+    mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" || \
+  mysqlbinlog "$BINLOG" 2>/dev/null | \
+    mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" --force
+done
+
+echo "delta import complete"

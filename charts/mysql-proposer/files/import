@@ -1,0 +1,39 @@
+#!/bin/bash
+set -euo pipefail
+
+required=(MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASSWORD \
+  OCI_ADDRESS BASELINE_REPO BASELINE_TAG OUTPUT_DIR)
+for var in "${required[@]}"; do
+  [[ -n "${!var:-}" ]] || { echo "missing env: $var" >&2; exit 1; }
+done
+
+IMPORT_DIR="$OUTPUT_DIR"
+rm -rf "$IMPORT_DIR"
+mkdir -p "$IMPORT_DIR"
+
+oras pull --plain-http "$OCI_ADDRESS/$BASELINE_REPO:$BASELINE_TAG" -o "$IMPORT_DIR"
+TARBALL=$(find "$IMPORT_DIR" -name "*.tgz" -o -name "*.tar.gz" | head -1)
+[[ -n "$TARBALL" ]] || { echo "no tarball found in pulled artifacts" >&2; exit 1; }
+mkdir -p "$IMPORT_DIR/baseline"
+tar -xzf "$TARBALL" -C "$IMPORT_DIR/baseline"
+
+BASELINE_DIR="$IMPORT_DIR/baseline" mysql-import-baseline
+
+if [[ -n "${DELTA_REPO:-}" && -n "${DELTA_TAG:-}" ]]; then
+  DELTA_DIR_PATH="$IMPORT_DIR/delta"
+  oras pull --plain-http "$OCI_ADDRESS/$DELTA_REPO:$DELTA_TAG" -o "$DELTA_DIR_PATH"
+  DELTA_TARBALL=$(find "$DELTA_DIR_PATH" -name "*.tgz" -o -name "*.tar.gz" | head -1)
+  if [[ -n "$DELTA_TARBALL" ]]; then
+    tar -xzf "$DELTA_TARBALL" -C "$DELTA_DIR_PATH"
+    DELTA_DIR="$DELTA_DIR_PATH" mysql-import-binlogs
+  else
+    for LAYER in "$DELTA_DIR_PATH"/*.0000*; do
+      [[ -f "$LAYER" ]] || continue
+      mkdir -p "$DELTA_DIR_PATH/extract"
+      cp "$LAYER" "$DELTA_DIR_PATH/extract/"
+      DELTA_DIR="$DELTA_DIR_PATH/extract" mysql-import-binlogs
+    done
+  fi
+fi
+
+echo "import complete"

@@ -1,0 +1,41 @@
+{{- if .Values.minio.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kvstore.fullname" . }}-minio
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "kvstore.fullname" . }}-minio }
+  template:
+    metadata:
+      labels: { app: {{ include "kvstore.fullname" . }}-minio }
+    spec:
+      containers:
+        - name: minio
+          image: {{ printf "%s:%s" .Values.minio.image.repository .Values.minio.image.tag }}
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef: { name: {{ include "kvstore.fullname" . }}-minio }
+          ports:
+            - { name: api, containerPort: 9000 }
+            - { name: console, containerPort: 9001 }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kvstore.fullname" . }}-minio
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "kvstore.fullname" . }}-minio }
+  ports:
+    - { name: api, port: 9000, targetPort: api }
+    - { name: console, port: 9001, targetPort: console }
+{{- end }}

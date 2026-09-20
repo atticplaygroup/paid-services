@@ -1,0 +1,62 @@
+# TODO(prod): pin digests; no mutable tags in examples
+image:
+  repository: oci.example.com/infrastructure
+  tag: dev
+  pullPolicy: IfNotPresent
+envoyImage:
+  repository: envoyproxy/envoy
+  tag: v1.38.3
+  pullPolicy: IfNotPresent
+fullnameOverride: ""
+minio:
+  enabled: true
+  image:
+    repository: minio/minio
+    tag: latest
+    pullPolicy: IfNotPresent
+  endpoint: "" # kvstore-minio:9000
+  bucket: applications
+  rootUser: minio
+  rootPassword: minio12345
+redisAddress: "" # kvstore-redis:6379
+env:
+  validAudience: "" # bafk9pipdnq2i2cm3okcnonbmclhzt4fh40mk7oenuqxjj79rietgh8arse
+  validCoinType: 1
+  validCoinEnvironment: 4
+  faucetMode: false
+  accountDomains: []
+  # - account.test-kvstore.com
+  # - account.envoy
+  alsLogName: kvstore_als
+  providerManifest: "{}"
+meter:
+  fullnameOverride: kvstore-meter
+  redis:
+    enabled: false
+    seedJobEnabled: true
+    host: "" # host: kvstore-redis
+    address: "" # address: kvstore-redis:6379
+  account:
+    validAudience: "" # bafk9pipdnq2i2cm3okcnonbmclhzt4fh40mk7oenuqxjj79rietgh8arse
+    validCoinType: 1
+    validCoinEnvironment: 4
+    faucetMode: false
+  als:
+    feedbackEnabled: false
+    feedbackTTLSeconds: 10
+    outproxyAddress: ""
+  authz:
+    allowZeroBalanceHTUs:
+      - /kvstore.v1.MeteredStorageService/Ping
+      - /account.v1.AccountService/DepositOrCreateAccount
+      - /account.v1.AccountService/CreditBalance
+  priceSeed:
+    entries:
+      - key: p:3:1
+        fields:
+          METER_TYPE_GET: "0"
+          METER_TYPE_SET: "0"
+      - key: p:3:3
+        fields:
+          METER_TYPE_GET: "0"
+          METER_TYPE_SET: "0"

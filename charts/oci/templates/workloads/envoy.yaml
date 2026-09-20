@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oci.name" . }}-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "oci.name" . }}-envoy }
+  template:
+    metadata:
+      labels: { app: {{ include "oci.name" . }}-envoy }
+    spec:
+      containers:
+        - name: envoy
+          image: envoyproxy/envoy:v1.38.3
+          args: ["-c", "/etc/envoy/envoy.yaml"]
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: admin, containerPort: 9901 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/envoy }
+      volumes:
+        - name: config
+          configMap: { name: {{ include "oci.name" . }}-envoy-config }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "oci.name" . }}-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "oci.name" . }}-envoy }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

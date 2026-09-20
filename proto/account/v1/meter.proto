@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+option go_package = "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/account/v1;account";
+
+import "google/protobuf/duration.proto";
+import "kvstore/v1/kvstore.proto";
+import "buf/validate/validate.proto";
+
+package account.v1;
+
+message Meter {
+  kvstore.v1.StorageBackend storage_backend = 1 [
+    (buf.validate.field).enum = {
+      defined_only: true
+    }
+  ];
+  string request_id = 2 [(buf.validate.field).string.max_len = 255];
+  string user_id = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      pattern: "^[a-z2-7]{59}$"
+    }
+  ];
+  int64 ingress_bytes = 4 [(buf.validate.field).int64.gte = 0];
+  int64 egress_bytes = 5 [(buf.validate.field).int64.gte = 0];
+  int64 storage_byte_seconds = 6 [(buf.validate.field).int64.gte = 0];
+  int64 get_count = 7 [(buf.validate.field).int64.gte = 0];
+  int64 set_count = 8 [(buf.validate.field).int64.gte = 0];
+  int64 temp_memory_bytes = 9 [(buf.validate.field).int64.gte = 0];
+  google.protobuf.Duration duration = 10 [
+    (buf.validate.field).duration.gte = {
+      seconds: 0
+    }
+  ];
+}
+
+message Usage {
+enum MeterType {
+  METER_TYPE_UNSPECIFIED = 0;
+  METER_TYPE_GET = 1;
+  METER_TYPE_SET = 2;
+  METER_TYPE_PEAK_MEMORY_BYTES = 3;
+  METER_TYPE_STORAGE_BYTES = 4;
+  METER_TYPE_INGRESS_BYTES = 5;
+  METER_TYPE_EGRESS_BYTES = 6;
+  METER_TYPE_DURATION_MS = 7;
+}
+  MeterType meter_type = 1 [(buf.validate.field).enum.defined_only = true];
+  kvstore.v1.StorageBackend storage_backend = 2 [
+    (buf.validate.field).enum = {
+      defined_only: true
+    }
+  ];
+  int64 unit_count = 3 [(buf.validate.field).int64.gte = 0];
+}
+
+service DeductionService {
+  rpc ReportUsage(ReportUsageRequest) returns (ReportUsageResponse) {}
+  rpc ScheduleExternalDeduction(ScheduleExternalDeductionRequest) returns (ScheduleExternalDeductionResponse) {}
+}
+
+message ScheduleExternalDeductionRequest {
+  string external_request_id = 1 [
+    (buf.validate.field).string = {
+      min_len: 1
+      max_len: 255
+    }
+  ];
+  string user_id = 2 [
+    (buf.validate.field).string = {
+      pattern: "^[a-z2-7]{59}$"
+    }
+  ];
+  string feedback_service_address = 3 [(buf.validate.field).string.uri = true];
+  int32 delay_seconds = 4 [(buf.validate.field).int32.gte = 0];
+}
+
+message ScheduleExternalDeductionResponse {
+}
+
+message ReportUsageRequest {
+  string request_id = 1 [(buf.validate.field).string.max_len = 255];
+  string user_id = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string = {
+      pattern: "^[a-z2-7]{59}$"
+    }
+  ];
+  repeated Usage usage = 3 [(buf.validate.field).repeated.max_items = 64];
+}
+
+message ReportUsageResponse {
+}

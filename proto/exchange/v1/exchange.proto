@@ -1,0 +1,217 @@
+syntax = "proto3";
+
+option go_package = "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/exchange/v1;exchange";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "buf/validate/validate.proto";
+
+package exchange.v1;
+
+service ExchangeService {
+  rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse) {
+  }
+
+  rpc Deposit(DepositRequest) returns (DepositResponse) {
+  }
+
+  rpc PruneAccounts(PruneAccountsRequest) returns (PruneAccountsResponse) {
+  }
+
+  rpc CreateWithdraw(CreateWithdrawRequest) returns (CreateWithdrawResponse) {
+  }
+
+  rpc BatchProcessWithdraws(BatchProcessWithdrawsRequest) returns (BatchProcessWithdrawsResponse) {
+  }
+
+  rpc BatchMarkWithdraws(BatchMarkWithdrawsRequest) returns (BatchMarkWithdrawsResponse) {
+  }
+
+  rpc Ping(PingRequest) returns (PingResponse) {
+  }
+
+  rpc ListPaymentMethods(ListPaymentMethodsRequest) returns (ListPaymentMethodsResponse) {
+  }
+
+  rpc BuyToken(BuyTokenRequest) returns (BuyTokenResponse) {
+  }
+}
+
+message BuyTokenRequest {
+  string audience = 1 [(buf.validate.field).string.pattern = "^bafk[a-z0-9]+$"];
+  int64 amount = 2 [(buf.validate.field).int64.gt = 0];
+}
+
+message BuyTokenResponse {
+  string token = 1;
+}
+
+message ListPaymentMethodsRequest {
+}
+
+message ListPaymentMethodsResponse {
+  repeated PaymentMethod payment_methods = 1;
+}
+
+enum PaymentCoin {
+  PAYMENT_COIN_UNSPECIFIED = 0;
+  PAYMENT_COIN_SUI = 1;
+}
+
+enum PaymentEnvironment {
+  PAYMENT_ENVIRONMENT_UNSPECIFIED = 0;
+  PAYMENT_ENVIRONMENT_MAINNET = 1;
+  PAYMENT_ENVIRONMENT_DEVNET  = 2;
+  PAYMENT_ENVIRONMENT_TESTNET = 3;
+  PAYMENT_ENVIRONMENT_LOCALNET = 4;
+}
+
+enum CoinType {
+  COIN_TYPE_UNSPECIFIED = 0;
+  COIN_TYPE_SUI = 1;
+}
+
+enum CoinEnvironment {
+  COIN_ENVIRONMENT_UNSPECIFIED = 0;
+  COIN_ENVIRONMENT_MAINNET = 1;
+  COIN_ENVIRONMENT_TESTNET = 2;
+  COIN_ENVIRONMENT_DEVNET = 3;
+  COIN_ENVIRONMENT_LOCALNET = 4;
+}
+
+message PaymentMethod {
+  PaymentCoin coin = 2 [(buf.validate.field).enum.defined_only = true];
+  PaymentEnvironment environment = 3 [(buf.validate.field).enum.defined_only = true];
+  string address = 4 [(buf.validate.field).string.pattern = "0x[a-f0-9]{64}"];
+}
+
+message PingRequest {
+  // To check effectiveness of buf validation
+  int64 dummy = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int64.gt = 0
+  ];
+}
+
+message PingResponse {
+  string pong = 1;
+}
+
+message BatchMarkWithdrawsRequest {
+  int32 limit = 1 [
+    (buf.validate.field).int32 = {
+      gt: 0
+      lte: 65535
+    }
+  ];
+}
+
+message BatchMarkWithdrawsResponse {
+  repeated int64 success_withdraw_ids = 1;
+}
+
+message BatchProcessWithdrawsRequest {
+  int32 limit = 1 [
+    (buf.validate.field).int32 = {
+      gt: 0
+      lte: 65535
+    }
+  ];
+}
+
+message BatchProcessWithdrawsResponse {
+  string digest = 1 [(buf.validate.field).string.pattern = "[A-Za-z0-9]{43,44}"];
+  int64 batch_size = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int64.gt = 0
+  ];
+}
+
+message Withdrawal {
+  string owner = 1 [(buf.validate.field).string.pattern = "^[a-z2-7]{59}$"];
+  int64 withdrawal_id = 2 [(buf.validate.field).int64.gt = 0];
+  string address_to = 3 [
+    (buf.validate.field).string.pattern = "0x[a-f0-9]{64}"
+  ];
+  int64 amount = 4 [
+    (buf.validate.field).int64.gt = 0
+  ];
+  int64 priority_fee = 5 [
+    (buf.validate.field).int64.gt = 0
+  ];
+}
+
+message CreateWithdrawRequest {
+  Withdrawal withdrawal = 2 [
+    (buf.validate.field).required = true
+  ];
+  bool withdraw_all = 3;
+}
+
+message CreateWithdrawResponse {
+  Withdrawal withdrawal = 1;
+}
+
+message PruneAccountsRequest {
+}
+
+message PruneAccountsResponse {
+  repeated Account accounts = 1;
+}
+
+message SuiDepositProof {
+  string chain_digest = 1 [(buf.validate.field).string.pattern = "[A-Za-z0-9]{43,44}"];
+  google.protobuf.Timestamp start_time = 2 [(buf.validate.field).timestamp.lt_now = true];
+  bytes challenge = 3 [(buf.validate.field).bytes.len = 32];
+  string signature = 4 [(buf.validate.field).required = true];
+}
+
+message DepositRequest {
+  google.protobuf.Duration ttl = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).duration = {
+      gte: {seconds: 0}
+      lte: {seconds: 2592000}
+    }
+  ];
+  SuiDepositProof proof = 2 [
+    (buf.validate.field).required = true
+  ];
+}
+
+message DepositResponse {
+  Account account = 1 [
+    (buf.validate.field).required = true
+  ];
+}
+
+message GetChallengeRequest {
+  string address = 1 [(buf.validate.field).string.pattern = "0x[a-f0-9]{64}"];
+}
+
+message GetChallengeResponse {
+  bytes challenge = 1 [(buf.validate.field).bytes.len = 32];
+  google.protobuf.Timestamp start_time = 2;
+}
+
+message Account {
+  int64 account_id = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).int64.gt = 0
+  ];
+  string principal = 3 [
+    (buf.validate.field).string.min_len = 1
+  ];
+  google.protobuf.Timestamp expire_time = 4 [
+    (buf.validate.field).timestamp.gt_now = true
+  ];
+  int64 balance = 5 [
+    (buf.validate.field).int64.gte = 0
+  ];
+}
+
+enum JwtUsage {
+  JWT_USAGE_UNSPECIFIED = 0;
+  JWT_USAGE_CREATE_SESSION = 1;
+  JWT_USAGE_MANAGE_SESSION = 2;
+}

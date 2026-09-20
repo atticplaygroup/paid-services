@@ -1,0 +1,25 @@
+{
+  "name": "cashier",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "build": "bun build --target=node src/index.ts --outdir=dist"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.13.0",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-node": "^2.2.0",
+    "@connectrpc/connect-web": "^2.1.2",
+    "@grpc/grpc-js": "^1.14.4",
+    "@mysten/sui": "^2.30.0",
+    "dpop": "^2.1.1",
+    "hono": "^4.12.32",
+    "multiformats": "^14.0.5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}

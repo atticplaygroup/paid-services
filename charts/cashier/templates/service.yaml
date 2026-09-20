@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cashier.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "cashier.fullname" . }}
+spec:
+  selector: { app: {{ include "cashier.fullname" . }} }
+  ports:
+    - { name: http, port: 8080, targetPort: {{ .Values.port }} }
