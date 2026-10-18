@@ -1,0 +1,15 @@
+{{- if and .Values.s3.enabled .Values.s3.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kvstore.fullname" . }}-s3
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.s3.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.s3.persistence.size }}
+{{- end }}

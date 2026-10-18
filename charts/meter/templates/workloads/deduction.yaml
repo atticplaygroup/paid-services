@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "meter.fullname" . }}-deduction
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "meter.fullname" . }}-deduction }
+  template:
+    metadata:
+      labels: { app: {{ include "meter.fullname" . }}-deduction }
+    spec:
+      containers:
+        - name: deduction
+          image: "{{ required "meter.image.repository is required" .Values.image.repository }}:{{ (.Values.image.tag | default .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/deduction"]
+          env:
+            - { name: LISTEN_ADDR, value: ":9192" }
+            - { name: CONNECT_LISTEN_ADDR, value: ":9193" }
+            - { name: BALANCE_BACKEND, value: {{ .Values.balanceBackend | quote }} }
+            - { name: REDIS_ADDR, value: {{ .Values.redis.address | quote }} }
+            {{- if eq .Values.balanceBackend "exchange-db" }}
+            - { name: EXCHANGE_DATABASE_URL, value: {{ .Values.exchangeDatabaseURL | quote }} }
+            {{- end }}
+            - { name: METER_FEEDBACK_ENABLED, value: {{ .Values.deduction.feedbackEnabled | quote }} }
+            - { name: METER_FEEDBACK_TTL_SECONDS, value: {{ .Values.deduction.feedbackTTLSeconds | quote }} }
+            {{- if .Values.deduction.outproxyAddress }}
+            - { name: OUTPROXY_ADDRESS, value: {{ .Values.deduction.outproxyAddress | quote }} }
+            {{- end }}
+          ports:
+            - { name: grpc, containerPort: 9192 }
+            - { name: connect, containerPort: 9193 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "meter.fullname" . }}-deduction
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "meter.fullname" . }}-deduction }
+  ports:
+    - { name: grpc, port: 9192, targetPort: grpc }
+    - { name: connect, port: 9193, targetPort: connect }

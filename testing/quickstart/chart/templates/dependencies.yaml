@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.redis.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ .Values.redis.name }} }
+  template:
+    metadata:
+      labels: { app: {{ .Values.redis.name }} }
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image | quote }}
+          ports: [{ name: redis, containerPort: 6379 }]
+          readinessProbe:
+            tcpSocket: { port: redis }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.redis.name }}
+spec:
+  selector: { app: {{ .Values.redis.name }} }
+  ports: [{ port: 6379, targetPort: redis }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.postgres.name }}
+spec:
+  serviceName: {{ .Values.postgres.name }}
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ .Values.postgres.name }} }
+  template:
+    metadata:
+      labels: { app: {{ .Values.postgres.name }} }
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image | quote }}
+          env:
+            - { name: POSTGRES_USER, value: {{ .Values.postgres.user | quote }} }
+            - { name: POSTGRES_PASSWORD, value: {{ .Values.postgres.password | quote }} }
+            - { name: POSTGRES_DB, value: {{ .Values.postgres.database | quote }} }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ name: postgres, containerPort: 5432 }]
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.postgres.name }}
+spec:
+  selector: { app: {{ .Values.postgres.name }} }
+  ports: [{ port: 5432, targetPort: postgres }]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-postgres
+          image: {{ .Values.postgres.image | quote }}
+          command: [sh, -c]
+          args:
+            - until pg_isready -h {{ .Values.postgres.name }} -U {{ .Values.postgres.user }}; do sleep 1; done
+      containers:
+        - name: migrate
+          image: "{{ .Values.exchange.image.repository }}:{{ .Values.exchange.image.tag }}"
+          imagePullPolicy: {{ .Values.exchange.image.pullPolicy }}
+          command: [/exchange-migrate]
+          env:
+            - { name: DATABASE_URL, value: {{ .Values.exchange.databaseURL | quote }} }

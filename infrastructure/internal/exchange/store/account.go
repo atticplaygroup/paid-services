@@ -54,17 +54,17 @@ func (s *Store) UpsertAccountTx(ctx context.Context, arg *UpsertAccountTxParams)
 	return account, nil
 }
 
-type BuyTokenTxParams struct {
-	Req            *pb.BuyTokenRequest
+type BuyPointsTxParams struct {
+	Req            *pb.BuyPointsRequest
 	BuyerPrincipal string
 }
 
-func (s *Store) BuyTokenTx(
+func (s *Store) BuyPointsTx(
 	ctx context.Context,
 	qtx *db.Queries,
-	arg *BuyTokenTxParams,
+	arg *BuyPointsTxParams,
 ) error {
-	// TODO: Meter usage and deduct in ALS.
+	// TODO: Meter usage and deduct in Deduction.
 	_, err := qtx.ChangeBalance(ctx, db.ChangeBalanceParams{
 		Principal:     arg.BuyerPrincipal,
 		BalanceChange: -arg.Req.GetAmount(),

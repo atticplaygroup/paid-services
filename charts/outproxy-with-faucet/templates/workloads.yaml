@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ (include "outproxy-with-faucet.fullname" .) }}-envoy
+data:
+  envoy.yaml: |
+{{ tpl (.Files.Get "files/envoy.yaml") . | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ (include "outproxy-with-faucet.fullname" .) }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ (include "outproxy-with-faucet.fullname" .) }} }
+  template:
+    metadata:
+      labels: { app: {{ (include "outproxy-with-faucet.fullname" .) }} }
+      annotations:
+        checksum/envoy: {{ tpl (.Files.Get "files/envoy.yaml") . | sha256sum }}
+        checksum/proxy-tls-secret: {{ .Values.proxyTls.existingSecret | sha256sum }}
+        checksum/outproxy: {{ if .Values.outproxyExistingSecret }}{{ .Values.outproxyExistingSecret | sha256sum }}{{ else }}{{ required "dpopMasterSecret is required" .Values.dpopMasterSecret | sha256sum }}{{ end }}
+        checksum/cashier-account-salt: {{ .Values.cashierAccountSalt | sha256sum }}
+        checksum/cashier: {{ if .Values.cashier.existingSecret }}{{ .Values.cashier.existingSecret | sha256sum }}{{ else }}{{ include "outproxy-with-faucet.cashierConfig" . | sha256sum }}{{ end }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: envoy
+          image: {{ .Values.envoyImage | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args: ["-c", "/etc/envoy/envoy.yaml"]
+          ports:
+            - { name: proxy, containerPort: 8080 }
+            {{- if .Values.proxyTls.enabled }}
+            - { name: proxy-tls, containerPort: 8443 }
+            {{- end }}
+          readinessProbe:
+            tcpSocket: { port: proxy }
+          volumeMounts:
+            - { name: envoy, mountPath: /etc/envoy, readOnly: true }
+            {{- if .Values.proxyTls.enabled }}
+            - { name: proxy-tls, mountPath: /etc/envoy/proxy-tls, readOnly: true }
+            {{- end }}
+        - name: outproxy
+          image: {{ (.Values.outproxyImage | default (printf "ghcr.io/atticplaygroup/paid-services/outproxy:%s" .Chart.AppVersion)) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["bun", "run", "src/server.ts"]
+          env:
+            - { name: LISTEN_ADDR, value: ":9090" }
+            - { name: CASHIER_ADDRESS, value: "http://127.0.0.1:8081" }
+            - { name: CASHIER_ACCOUNT_SALT, value: {{ required "cashierAccountSalt is required" .Values.cashierAccountSalt | quote }} }
+            - name: DPOP_MASTER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.outproxyExistingSecret | default (printf "%s-outproxy" (include "outproxy-with-faucet.fullname" .)) }}
+                  key: DPOP_MASTER_SECRET
+            - { name: CA_CERT_PATH, value: /tls/ca.crt }
+            - { name: TLS_CA_CERT_PATH, value: /tls/ca.crt }
+            - { name: TLS_CERT_PATH, value: /tls/tls.crt }
+            - { name: TLS_KEY_PATH, value: /tls/tls.key }
+          readinessProbe:
+            tcpSocket: { port: 9090 }
+          volumeMounts:
+            - { name: tls, mountPath: /tls, readOnly: true }
+        - name: cashier
+          image: {{ (.Values.cashierImage | default (printf "ghcr.io/atticplaygroup/paid-services/cashier:%s" .Chart.AppVersion)) | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          env:
+            - { name: GRPC_PORT, value: "8081" }
+            - { name: NODE_EXTRA_CA_CERTS, value: /tls/ca.crt }
+            - name: CASHIER_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cashier.existingSecret | default (printf "%s-cashier" (include "outproxy-with-faucet.fullname" .)) }}
+                  key: config.json
+          readinessProbe:
+            tcpSocket: { port: 8081 }
+          volumeMounts:
+            - { name: tls, mountPath: /tls, readOnly: true }
+      volumes:
+        - name: envoy
+          configMap: { name: {{ (include "outproxy-with-faucet.fullname" .) }}-envoy }
+        {{- if .Values.proxyTls.enabled }}
+        - name: proxy-tls
+          secret: { secretName: {{ required "proxyTls.existingSecret is required when proxyTls.enabled=true" .Values.proxyTls.existingSecret }} }
+        {{- end }}
+        - name: tls
+          secret: { secretName: {{ .Values.tls.existingProxySecret | default (printf "%s-proxy-tls" (include "outproxy-with-faucet.fullname" .)) }} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ (include "outproxy-with-faucet.fullname" .) }}
+spec:
+  type: {{ .Values.serviceType }}
+  selector: { app: {{ (include "outproxy-with-faucet.fullname" .) }} }
+  ports:
+    - { name: proxy, port: {{ .Values.port }}, targetPort: proxy }
+    {{- if .Values.proxyTls.enabled }}
+    - { name: proxy-tls, port: {{ .Values.proxyTls.port }}, targetPort: proxy-tls }
+    {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ (include "outproxy-with-faucet.fullname" .) }}-internal
+spec:
+  type: ClusterIP
+  selector: { app: {{ (include "outproxy-with-faucet.fullname" .) }} }
+  ports:
+    - { name: feedback, port: 9090, targetPort: 9090 }
+    - { name: cashier, port: 8081, targetPort: 8081 }

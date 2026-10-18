@@ -1,7 +1,9 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
-import { authMiddleware, getUserId } from "./auth.js"
+import type { Context, Next } from "hono"
+import { authMiddleware, getRequestId, getRequestIdentity, getUserId } from "./auth.js"
 import type { KvstoreClient } from "./storage/kvstore.js"
+import { withRequestIdentity } from "./storage/kvstore.js"
 import type { MeterClient } from "./meter.js"
 import { digestOf } from "./digest.js"
 
@@ -9,11 +11,6 @@ import { digestOf } from "./digest.js"
 function parseDigest(digest: string): { algo: string; hex: string } | null {
   const m = /^(sha256):([a-f0-9]{64})$/.exec(digest)
   return m ? { algo: m[1], hex: m[2] } : null
-}
-
-/** Generate a UUID v4 for upload sessions. */
-function uuidv4(): string {
-  return crypto.randomUUID()
 }
 
 function repoName(owner: string, repo: string): string {
@@ -41,7 +38,7 @@ export function createOciApp(deps: OciDeps): Hono {
       c.status(400)
       return c.json({ errors: [{ code: "BLOB_UNKNOWN", message: `invalid digest: ${digest}` }] })
     }
-    const blob = await deps.kvstore.getBlob(digest)
+    const blob = await withRequestIdentity(getRequestIdentity(c), () => deps.kvstore.getBlob(digest))
     if (!blob) {
       c.status(404)
       return c.json({ errors: [{ code: "BLOB_UNKNOWN", message: `blob not found: ${digest}` }] })
@@ -55,7 +52,7 @@ export function createOciApp(deps: OciDeps): Hono {
     const { digest } = c.req.param()
     const dp = parseDigest(digest)
     if (!dp) { c.status(400); return c.body(null) }
-    const blob = await deps.kvstore.getBlob(digest)
+    const blob = await withRequestIdentity(getRequestIdentity(c), () => deps.kvstore.getBlob(digest))
     if (!blob) { c.status(404); return c.body(null) }
     return c.body(null)
   })
@@ -68,10 +65,10 @@ export function createOciApp(deps: OciDeps): Hono {
     let body: Uint8Array | null = null
 
     // Try tag lookup first
-    body = await deps.kvstore.getManifestTag(name, ref, owner)
+    body = await withRequestIdentity(getRequestIdentity(c), () => deps.kvstore.getManifestTag(name, ref, owner))
     if (!body && ref.startsWith("sha256:")) {
       // Content-addressed blob lookup
-      const blob = await deps.kvstore.getBlob(ref)
+      const blob = await withRequestIdentity(getRequestIdentity(c), () => deps.kvstore.getBlob(ref))
       if (blob) body = blob
     }
 
@@ -89,32 +86,32 @@ export function createOciApp(deps: OciDeps): Hono {
   app.get("/v2/:owner/:repo/tags/list", async (c) => {
     const { owner, repo } = c.req.param()
     const name = repoName(owner, repo)
-    const tags = await deps.kvstore.listTags(name, owner)
+    const tags = await withRequestIdentity(getRequestIdentity(c), () => deps.kvstore.listTags(name, owner))
     return c.json(tags)
   })
 
   // ---- Write endpoints (only when !readOnly) ----
   if (!deps.readOnly) {
-
-  app.post("/v2/:owner/:repo/blobs/uploads/", authMiddleware, async (c) => {
-    const { owner, repo } = c.req.param()
-    const userId = getUserId(c)
-    const allowed = await deps.meter.reportUsage(uuidv4(), userId)
+  const paymentMiddleware = async (c: Context, next: Next) => {
+    const allowed = await deps.meter.reportUsage(getRequestId(c), getUserId(c))
     if (!allowed) {
       c.status(402)
       return c.json({ errors: [{ code: "PAYMENT_REQUIRED", message: "deduction failed" }] })
     }
-    const uuid = uuidv4()
-    c.header("Location", `/v2/${repoName(owner, repo)}/blobs/uploads/${uuid}`)
+    await next()
+  }
+
+  app.post("/v2/:owner/:repo/blobs/uploads/", authMiddleware, paymentMiddleware, async (c) => {
+    const { owner, repo } = c.req.param()
+    const uploadId = Bun.randomUUIDv7()
+    c.header("Location", `/v2/${repoName(owner, repo)}/blobs/uploads/${uploadId}`)
     c.header("Range", "0-0")
     c.status(202)
-    return c.json({ uuid })
+    return c.json({ uploadId })
   })
 
-  app.put("/v2/:owner/:repo/blobs/uploads/:uuid", authMiddleware, async (c) => {
+  app.put("/v2/:owner/:repo/blobs/uploads/:uploadId", authMiddleware, paymentMiddleware, async (c) => {
     const digest = c.req.query("digest")
-    const userId = getUserId(c)
-    const externalRequestId = c.req.header("x-external-request-id")
     if (!digest) {
       c.status(400)
       return c.json({ errors: [{ code: "DIGEST_INVALID", message: "digest query parameter required" }] })
@@ -123,11 +120,9 @@ export function createOciApp(deps: OciDeps): Hono {
       c.status(400)
       return c.json({ errors: [{ code: "DIGEST_INVALID", message: `invalid digest: ${digest}` }] })
     }
-    const allowed = await deps.meter.reportUsage(uuidv4(), userId)
-    if (!allowed) { c.status(402); return c.json({ errors: [{ code: "PAYMENT_REQUIRED", message: "deduction failed" }] }) }
     const body = await c.req.arrayBuffer()
     try {
-      await deps.kvstore.putBlob(digest, new Uint8Array(body), userId, externalRequestId)
+      await withRequestIdentity(getRequestIdentity(c), () => deps.kvstore.putBlob(digest, new Uint8Array(body)))
     } catch (err) {
       console.error("putBlob error:", err)
       c.status(500)
@@ -138,11 +133,9 @@ export function createOciApp(deps: OciDeps): Hono {
     return c.body(null)
   })
 
-  app.put("/v2/:owner/:repo/manifests/:ref", authMiddleware, async (c) => {
+  app.put("/v2/:owner/:repo/manifests/:ref", authMiddleware, paymentMiddleware, async (c) => {
     const { owner, repo, ref } = c.req.param()
     const name = repoName(owner, repo)
-    const userId = getUserId(c)
-    const externalRequestId = c.req.header("x-external-request-id")
     const body = await c.req.text()
 
     const digestParam = c.req.query("digest")
@@ -154,23 +147,18 @@ export function createOciApp(deps: OciDeps): Hono {
       }
     }
 
-    const allowed = await deps.meter.reportUsage(uuidv4(), userId)
-    if (!allowed) {
-      c.status(402)
-      return c.json({ errors: [{ code: "PAYMENT_REQUIRED", message: "deduction failed" }] })
-    }
-
     const bodyBytes = new TextEncoder().encode(body)
     const digest = digestOf(bodyBytes)
-    await deps.kvstore.putBlob(digest, bodyBytes, userId, externalRequestId)
-    await deps.kvstore.putManifestTag(name, ref, userId, bodyBytes, Date.now(), userId, externalRequestId)
-    // Update tag list
-    const existingTags = await deps.kvstore.listTags(name, userId)
-    const tagNames = existingTags.tags
-    if (!tagNames.includes(ref)) {
-      tagNames.push(ref)
-      await deps.kvstore.putTagList(name, tagNames, userId, userId, externalRequestId)
-    }
+    await withRequestIdentity(getRequestIdentity(c), async () => {
+      await deps.kvstore.putBlob(digest, bodyBytes)
+      await deps.kvstore.putManifestTag(name, ref, bodyBytes, Date.now())
+      const existingTags = await deps.kvstore.listTags(name, owner)
+      const tagNames = existingTags.tags
+      if (!tagNames.includes(ref)) {
+        tagNames.push(ref)
+        await deps.kvstore.putTagList(name, tagNames)
+      }
+    })
 
     c.header("Location", `/v2/${name}/manifests/${digest}`)
     c.header("Docker-Content-Digest", digest)
@@ -181,11 +169,12 @@ export function createOciApp(deps: OciDeps): Hono {
   app.delete("/v2/:owner/:repo/manifests/:ref", authMiddleware, async (c) => {
     const { owner, repo, ref } = c.req.param()
     const name = repoName(owner, repo)
-    const userId = getUserId(c)
     // Remove from tag list
-    const existingTags = await deps.kvstore.listTags(name, userId)
-    const tagNames = existingTags.tags.filter((t: string) => t !== ref)
-    await deps.kvstore.putTagList(name, tagNames, userId, userId)
+    await withRequestIdentity(getRequestIdentity(c), async () => {
+      const existingTags = await deps.kvstore.listTags(name, owner)
+      const tagNames = existingTags.tags.filter((t: string) => t !== ref)
+      await deps.kvstore.putTagList(name, tagNames)
+    })
     c.status(202)
     return c.body(null)
   })

@@ -1,0 +1,51 @@
+{{- $proxySecret := required "proxy.tls.existingProxySecret must name the demo CA Secret" .Values.proxy.tls.existingProxySecret }}
+{{- $providerSecret := .Values.provider.env.tlsSecretName }}
+{{- $providerHost := printf "%s-envoy" .Values.provider.fullnameOverride }}
+{{- if .Values.tls.generateDemoCertificates }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $proxySecret }}
+{{- $ca := genCA (printf "%s-demo-ca" .Release.Name) 3650 }}
+{{- if $existing }}
+{{- $ca = buildCustomCert (index $existing.data "ca.crt") (index $existing.data "tls.key") }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $proxySecret }}
+type: Opaque
+data:
+  ca.crt: {{ $ca.Cert | b64enc }}
+  tls.crt: {{ $ca.Cert | b64enc }}
+  tls.key: {{ $ca.Key | b64enc }}
+---
+{{- if not .Values.tls.existingProviderSecret }}
+{{- $existingProvider := lookup "v1" "Secret" .Release.Namespace $providerSecret }}
+{{- $dns := concat (list $providerHost (printf "%s.%s.svc.cluster.local" $providerHost .Release.Namespace)) .Values.tls.dnsNames }}
+{{- $cert := genSignedCert $providerHost nil $dns 3650 $ca }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $providerSecret }}
+type: kubernetes.io/tls
+data:
+  ca.crt: {{ $ca.Cert | b64enc }}
+  tls.crt: {{ if $existingProvider }}{{ index $existingProvider.data "tls.crt" }}{{ else }}{{ $cert.Cert | b64enc }}{{ end }}
+  tls.key: {{ if $existingProvider }}{{ index $existingProvider.data "tls.key" }}{{ else }}{{ $cert.Key | b64enc }}{{ end }}
+---
+{{- end }}
+{{- else if not .Values.tls.existingProviderSecret }}
+{{- fail "tls.generateDemoCertificates=false requires tls.existingProviderSecret (and provider.env.tlsSecretName)" }}
+{{- end }}
+{{- if .Values.tls.existingProviderSecret }}
+{{- if ne .Values.tls.existingProviderSecret .Values.provider.env.tlsSecretName }}
+{{- fail "tls.existingProviderSecret must equal provider.env.tlsSecretName" }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-seed
+data:
+  seed.ts: |
+{{ .Files.Get "files/seed.ts" | indent 4 }}
+  welcome.txt: |
+{{ .Files.Get "files/welcome.txt" | indent 4 }}

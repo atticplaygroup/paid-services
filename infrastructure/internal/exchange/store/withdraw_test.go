@@ -273,3 +273,113 @@ var _ = Describe("Batch withdrawal for multiple sellers", Label("db"), func() {
 		Expect(completed.WithdrawalStatus).To(Equal("succeeded"))
 	})
 })
+
+var _ = Describe("Withdrawal priority and retention lifecycle", Label("db"), func() {
+	It("batches the highest waiting fees and cleans completed batches without removing waiting or processing withdrawals", func() {
+		ctx := context.Background()
+		s := StoreInstance
+		RefreshDb(StoreTestDb, Migrations)
+
+		fees := []int64{3_000_000, 2_000_000, 1_000_000, 1_500_000}
+		withdrawals := make([]*db.Withdrawal, len(fees))
+		for index, fee := range fees {
+			principal := fmt.Sprintf("withdrawal-lifecycle-seller-%d", index)
+			_, err := s.UpsertAccountTx(ctx, &store.UpsertAccountTxParams{
+				Digest: fmt.Sprintf("withdrawal-lifecycle-deposit-%d", index),
+				UpsertAccountParams: db.UpsertAccountParams{
+					Principal: principal,
+					Balance:   20_000_000,
+					Ttl:       pgtype.Interval{Microseconds: 24 * 3600 * 1_000_000, Valid: true},
+					Privilege: "user",
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			address := make([]byte, 32)
+			address[31] = byte(index + 1)
+			withdrawals[index], err = s.WithdrawTx(ctx, store.WithdrawTxParams{
+				StartWithdrawalParams: db.StartWithdrawalParams{
+					Principal:       principal,
+					WithdrawAddress: address,
+					Amount:          10_000_000,
+					PriorityFee:     fee,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			balance, err := s.QueryBalance(ctx, principal)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(balance.Balance).To(Equal(10_000_000 - fee))
+		}
+
+		// The second seller's earlier batch is already complete and must not
+		// compete with waiting withdrawals, despite its higher fee.
+		previous, err := s.SetWithdrawalBatch(ctx, db.SetWithdrawalBatchParams{
+			TransactionDigest: "previous-withdrawal-batch", TransactionBcsTypeName: "transaction",
+			TransactionBcsBytes: []byte("previous"), TotalPriorityFee: fees[1],
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = s.ProcessWithdrawals(ctx, db.ProcessWithdrawalsParams{
+			ProcessingWithdrawalID: pgtype.Int8{Int64: previous.ProcessingWithdrawalID, Valid: true},
+			WithdrawalIds:          []int64{withdrawals[1].WithdrawalID},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = s.SetWithdrawalSuccess(ctx, previous.TransactionDigest)
+		Expect(err).NotTo(HaveOccurred())
+
+		tx, err := s.GetConn().Begin(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = tx.Rollback(ctx) }()
+		qtx := s.WithTx(tx)
+		candidates, err := qtx.SelectCandidateWithdrawals(ctx, 2)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(candidates).To(HaveLen(2))
+		Expect(candidates[0].WithdrawalID).To(Equal(withdrawals[0].WithdrawalID))
+		Expect(candidates[1].WithdrawalID).To(Equal(withdrawals[3].WithdrawalID))
+		batch, err := qtx.SetWithdrawalBatch(ctx, db.SetWithdrawalBatchParams{
+			TransactionDigest: "priority-withdrawal-batch", TransactionBcsTypeName: "transaction",
+			TransactionBcsBytes: []byte("priority"),
+			TotalPriorityFee:    candidates[0].PriorityFee + candidates[1].PriorityFee,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(batch.TotalPriorityFee).To(Equal(int64(4_500_000)))
+		processed, err := qtx.ProcessWithdrawals(ctx, db.ProcessWithdrawalsParams{
+			ProcessingWithdrawalID: pgtype.Int8{Int64: batch.ProcessingWithdrawalID, Valid: true},
+			WithdrawalIds:          []int64{candidates[0].WithdrawalID, candidates[1].WithdrawalID},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(processed).To(HaveLen(2))
+		for _, withdrawal := range processed {
+			Expect(withdrawal.ProcessingWithdrawalID).To(Equal(pgtype.Int8{Int64: batch.ProcessingWithdrawalID, Valid: true}))
+		}
+		Expect(tx.Commit(ctx)).To(Succeed())
+
+		// Cleanup must leave the new processing batch and the waiting seller intact.
+		cutoff := pgtype.Timestamptz{Time: time.Now().Add(time.Minute), Valid: true}
+		cleaned, err := s.CleanOldWithdrawals(ctx, cutoff)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cleaned).To(HaveLen(1))
+		Expect(cleaned[0].ProcessingWithdrawalID).To(Equal(previous.ProcessingWithdrawalID))
+		processing, err := s.ListProcessingWithdrawals(ctx, db.ListProcessingWithdrawalsParams{Limit: 10})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(processing).To(HaveLen(1))
+		Expect(processing[0].ProcessingWithdrawalID).To(Equal(batch.ProcessingWithdrawalID))
+
+		completed, err := s.SetWithdrawalSuccess(ctx, batch.TransactionDigest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(completed.WithdrawalStatus).To(Equal("succeeded"))
+		cleaned, err = s.CleanOldWithdrawals(ctx, cutoff)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cleaned).To(HaveLen(1))
+		Expect(cleaned[0].ProcessingWithdrawalID).To(Equal(batch.ProcessingWithdrawalID))
+		for index, withdrawal := range withdrawals {
+			remaining, err := s.ListWithdrawals(ctx, db.ListWithdrawalsParams{AccountID: withdrawal.AccountID, Limit: 10})
+			Expect(err).NotTo(HaveOccurred())
+			if index == 2 {
+				Expect(remaining).To(HaveLen(1))
+				Expect(remaining[0].WithdrawalID).To(Equal(withdrawal.WithdrawalID))
+				Expect(remaining[0].ProcessingWithdrawalID.Valid).To(BeFalse())
+			} else {
+				Expect(remaining).To(BeEmpty())
+			}
+		}
+	})
+})

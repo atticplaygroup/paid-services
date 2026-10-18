@@ -1,0 +1,8 @@
+ARG MYSQL_TOOLS_IMAGE=local/mysql-tools:dev
+FROM oven/bun:1.4.2 AS bun
+FROM ${MYSQL_TOOLS_IMAGE}
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+RUN curl -fsSL https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
+WORKDIR /app
+COPY testing/mysql/e2e-mysql.test.ts ./mysql/
+CMD ["bun", "test", "mysql/e2e-mysql.test.ts"]

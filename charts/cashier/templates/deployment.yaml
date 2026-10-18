@@ -16,22 +16,12 @@ spec:
       enableServiceLinks: false
       containers:
         - name: cashier
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/usr/local/bin/bun", "run", "src/index.ts"]
           env:
             - { name: GRPC_PORT, value: {{ .Values.port | quote }} }
-            - { name: CASHIER_INSECURE, value: {{ .Values.insecure | quote }} }
-            - { name: CASHIER_ACCOUNTS, value: {{ .Values.accounts | quote }} }
-            - { name: CASHIER_ACCOUNT_SALT, value: {{ .Values.accountSalt | quote }} }
-            - { name: CASHIER_DEFAULT_CHAIN_DEPOSIT_AMOUNT, value: {{ .Values.defaultChainDepositAmount | quote }} }
-            - { name: CASHIER_DEFAULT_PROVIDER_DEPOSIT_AMOUNT, value: {{ .Values.defaultProviderDepositAmount | quote }} }
-            - { name: REDEEM_EXCHANGE_TOKENS, value: {{ .Values.redeemExchangeTokens | quote }} }
-            - { name: VALID_EXCHANGE_HOSTS, value: {{ required "cashier.validExchangeHosts must be non-empty" .Values.validExchangeHosts | quote }} }
-            - { name: VALID_AUDIENCE, value: {{ .Values.validAudience | quote }} }
-            - name: CASHIER_ACCOUNT_ORIGIN_OVERRIDES
-              value: {{ .Values.accountOriginOverrides | quote }}
-            - name: CASHIER_EXCHANGE_ORIGIN_OVERRIDES
-              value: {{ .Values.exchangeOriginOverrides | quote }}
+            - name: CASHIER_CONFIG
+              value: {{ toJson (dict "accounts" .Values.accounts "accountSalt" .Values.accountSalt "defaultChainDepositAmount" .Values.defaultChainDepositAmount "defaultProviderDepositAmount" .Values.defaultProviderDepositAmount "accountOriginOverrides" .Values.accountOriginOverrides "manifestOriginOverrides" .Values.manifestOriginOverrides) | quote }}
           ports:
             - { name: http, containerPort: {{ .Values.port }} }

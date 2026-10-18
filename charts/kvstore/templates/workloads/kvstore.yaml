@@ -14,16 +14,20 @@ spec:
       enableServiceLinks: false
       containers:
         - name: kvstore
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ required "kvstore.image.repository is required" .Values.image.repository }}:{{ (.Values.image.tag | default .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/meter", "kvstore"]
+          command: ["/kvstore"]
           env:
-            - { name: MINIO_ENDPOINT, value: {{ .Values.minio.endpoint | quote }} }
-            - { name: MINIO_BUCKET, value: {{ .Values.minio.bucket | quote }} }
-            - { name: MINIO_ACCESS_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.fullname" . }}-minio, key: MINIO_ROOT_USER } } }
-            - { name: MINIO_SECRET_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.fullname" . }}-minio, key: MINIO_ROOT_PASSWORD } } }
+            - { name: MINIO_ENDPOINT, value: {{ include "kvstore.s3Endpoint" . | quote }} }
+            - { name: S3_SECURE, value: {{ .Values.s3.secure | quote }} }
+            - { name: MINIO_BUCKET, value: {{ .Values.s3.bucket | quote }} }
+            - { name: MINIO_ACCESS_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.s3Secret" . }}, key: accessKey } } }
+            - { name: MINIO_SECRET_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.s3Secret" . }}, key: secretKey } } }
           ports:
             - { name: http, containerPort: 8080 }
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 2
           volumeMounts:
             - { name: kvstore-config, mountPath: /.env, subPath: .env }
       volumes:

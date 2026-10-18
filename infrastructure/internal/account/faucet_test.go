@@ -13,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	pb "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/account/v1"
+	"github.com/atticplaygroup/paid-services/infrastructure/pkg/middleware"
 	"github.com/atticplaygroup/paid-services/infrastructure/pkg/utils"
 )
 
@@ -44,11 +45,10 @@ func TestFaucetDisabled(t *testing.T) {
 	srv, _ := setupFaucetTest(t)
 
 	req := &pb.CreditBalanceRequest{
-		UserId: "testuser",
 		Amount: 1000,
 	}
 
-	_, err := srv.CreditBalance(context.Background(), connect.NewRequest(req))
+	_, err := srv.CreditBalance(middleware.WithSession(context.Background(), &middleware.Session{UserId: "testuser", RequestId: "req"}), connect.NewRequest(req))
 	if err == nil {
 		t.Fatal("expected error when faucet is disabled")
 	}
@@ -64,11 +64,10 @@ func TestFaucetCreditBalance(t *testing.T) {
 	defer atomic.StoreInt32(&faucetEnabled, 0)
 
 	req := &pb.CreditBalanceRequest{
-		UserId: "alice",
 		Amount: 5000,
 	}
 
-	resp, err := srv.CreditBalance(context.Background(), connect.NewRequest(req))
+	resp, err := srv.CreditBalance(middleware.WithSession(context.Background(), &middleware.Session{UserId: "alice", RequestId: "req"}), connect.NewRequest(req))
 	if err != nil {
 		t.Fatalf("CreditBalance: %v", err)
 	}
@@ -100,14 +99,15 @@ func TestFaucetAccumulates(t *testing.T) {
 	EnableFaucet()
 	defer atomic.StoreInt32(&faucetEnabled, 0)
 
-	req1 := &pb.CreditBalanceRequest{UserId: "bob", Amount: 100}
-	_, err := srv.CreditBalance(context.Background(), connect.NewRequest(req1))
+	ctx := middleware.WithSession(context.Background(), &middleware.Session{UserId: "bob", RequestId: "req"})
+	req1 := &pb.CreditBalanceRequest{Amount: 100}
+	_, err := srv.CreditBalance(ctx, connect.NewRequest(req1))
 	if err != nil {
 		t.Fatalf("first credit: %v", err)
 	}
 
-	req2 := &pb.CreditBalanceRequest{UserId: "bob", Amount: 200}
-	resp2, err := srv.CreditBalance(context.Background(), connect.NewRequest(req2))
+	req2 := &pb.CreditBalanceRequest{Amount: 200}
+	resp2, err := srv.CreditBalance(ctx, connect.NewRequest(req2))
 	if err != nil {
 		t.Fatalf("second credit: %v", err)
 	}
@@ -129,8 +129,8 @@ func TestFaucetSetsTtl(t *testing.T) {
 	EnableFaucet()
 	defer atomic.StoreInt32(&faucetEnabled, 0)
 
-	req := &pb.CreditBalanceRequest{UserId: "charlie", Amount: 100}
-	_, err := srv.CreditBalance(context.Background(), connect.NewRequest(req))
+	req := &pb.CreditBalanceRequest{Amount: 100}
+	_, err := srv.CreditBalance(middleware.WithSession(context.Background(), &middleware.Session{UserId: "charlie", RequestId: "req"}), connect.NewRequest(req))
 	if err != nil {
 		t.Fatalf("CreditBalance: %v", err)
 	}
@@ -138,5 +138,19 @@ func TestFaucetSetsTtl(t *testing.T) {
 	ttl := mr.TTL(utils.AuthzKey("charlie"))
 	if ttl <= 0 {
 		t.Fatalf("expected positive TTL, got %v", ttl)
+	}
+}
+
+func TestFaucetRequiresSession(t *testing.T) {
+	srv, _ := setupFaucetTest(t)
+	EnableFaucet()
+	defer atomic.StoreInt32(&faucetEnabled, 0)
+
+	_, err := srv.CreditBalance(context.Background(), connect.NewRequest(&pb.CreditBalanceRequest{Amount: 100}))
+	if err == nil {
+		t.Fatal("expected error without session")
+	}
+	if !strings.Contains(err.Error(), "invalid session") {
+		t.Fatalf("expected invalid session, got: %v", err)
 	}
 }

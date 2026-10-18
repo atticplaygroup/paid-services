@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/account/v1"
+	"github.com/atticplaygroup/paid-services/infrastructure/pkg/middleware"
 	"github.com/atticplaygroup/paid-services/infrastructure/pkg/utils"
 )
 
@@ -35,7 +36,11 @@ func (s *Server) CreditBalance(
 		)
 	}
 
-	userId := req.Msg.GetUserId()
+	session, err := middleware.SessionFromContext(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.PermissionDenied, "invalid session: %v", err)
+	}
+	userId := session.UserId
 	amount := req.Msg.GetAmount()
 
 	balance, err := s.balanceStore.Increment(ctx, userId, amount)

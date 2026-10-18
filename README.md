@@ -6,42 +6,16 @@ PAID services are:
 
 - **P**ermissionless: Self-registered pseudo-identity participation
 - **A**utonomous: Sustainably run with resistance to abuse from the public Internet with little human intervention
-- **I**centivized: Scalablity in the real world by generating revenue for parties involved
+- **I**centivized: Scalability in the real world by generating revenue for parties involved
 - **D**ecoupled: Composable switches with compatible and competitive providers
 
 Get PAID if:
 - You want your data to be openly accessible, as a Proposer
-- Serve open data for money, as an Infrastructure provider
+- Let your idle computation resource earn money like blockchain mining, as an Infrastructure provider
 - Attract users to your website with rich open contents and resources, and profit traditionally like with advertisements to bridge the unwillingness of users to pay, as an Application provider
-- You want to view contents managed by your favorate moderator with your favorate custom client app with a competitive market of recommenders and contents, as a user
+- You want to view contents managed by your favorite moderator with your favorite custom client app with a competitive market of recommenders and contents, as a user
 
-## Why getting PAID
-
-Because the interest of users and platforms differ. Platforms are incentivized to exploit users with advertisements and conservative moderations. Users are locked in the platform. We bring competence back. Even if we don't beat them in the end, we give them the pressure to serve users better.
-
-Let's be concrete. Take social network as an example. The philosophy is similar to Nostr:
-| Traditionally                                | In PAID services          |
-| ----------------------------------------------| ---------------------------|
-| Users are locked-in                          | Data is open              |
-| Moderate uniformly and conservatively        | Choose your own moderator |
-| Terms change overnight and forced acceptance | Choose your own provider  |
-| Forced user interface or update              | Choose your own UI        |
-
-But PAID services bring incentive to achieve scalability, bring upsides back, and even compete with traditional platforms.
-| Traditionally             | In PAID services                        |
-| ---------------------------| -----------------------------------------|
-| Telemetry and tracking    | Tradeoff utility and privacy yourself   |
-| Advertisements            | Switch provider or pay usage            |
-| Improve algorithms slowly | Recommenders compete openly             |
-| API restrictions          | On-demand payment or just replicate all |
-
-Further, by decoupling the functionality of a platform, interesting applications emerge:
-| Traditionally                            | In PAID services                                          |
-| ------------------------------------------| -----------------------------------------------------------|
-| Data isolation by companies cannot share | Cross-app recommendation with local data                  |
-| Large bills for sharp SLA paid to cloud  | Propose behind Tor, outsource serving to market           |
-| Privacy locked in company by law         | Earn money from model trainers with your browsing history |
-| Websites locked in by domain name        | Keep the identity key and switch domain name at will      |
+[Motivation](./docs/concepts/motivation.md) page discusses more on pros and cons of PAID services.
 
 ## Quickstart
 
@@ -49,29 +23,30 @@ Fetch a text file from an outproxy who runs on devnet faucet.
 <!-- TODO: change domain stubs and make the quickstart work -->
 
 ```bash
-HTTP_PROXY=outproxy-insecure.paid-services.com curl http://paid-services.com/kvstore/meter.v1.MeteredStorageService/GetCASValue/bafka83hc4nk9xji86eqvt9aqa6coyvu35kllt4hvjpza8x9glm345mvch
+HTTPS_PROXY=https://outproxy.paid-services.com:8443 curl --fail-with-body -sS --noproxy '' \
+  --cacert <(curl --fail-with-body -sS https://outproxy.paid-services.com/ca.crt)> \
+  -H 'content-type: application/json' -H 'x-request-id: quickstart-read-https' \
+  -d '{"key":"bafkreihfqce2w5fkfwct23alewvtt56pwg7yzeayg4tfhjme57ie44qbam"}' \
+  https://kvstore.paid-services.com/kvstore.v1.MeteredStorageService/GetCASValue \
+  | jq -er .value | base64 -d
 ```
 ```
 Welcome, PAID user!
 ```
 
-If you got HTTP hijacked, run your own outproxy with a self signed certificate inside to modify curl.
-```bash
-docker run -e=HTTP_PROXY=http://127.0.0.1:8080 --rm oci.paid-services.com/outproxy-demo-cert-pinned:latest bash -c 'curl https://paid-services.com/kvstore/meter.v1.MeteredStorageService/GetCASValue/bafka83hc4nk9xji86eqvt9aqa6coyvu35kllt4hvjpza8x9glm345mvch'
-```
-```
-Welcome, PAID user!
-```
+Read [quickstart](./docs/quickstart.md) to know what happened behind the scene, including who paid the fetching for you, and how.
 
-Read ./docs/quickstart.md to know what happened behind the scene, including who paid the fetching for you, and how.
+See [demo deployment and testing](docs/developer-guide/quickstart-demo.md) for configuration and [OCI push and pull](testing/oci/README.md) for the OCI flow.
 
 ## Documentation
 
-Documentation is available in ./docs.
+Documentation is under construction. Concepts, quickstart and client guides are now available in ./docs.
 
+<!--
 ## Contributing
 
-Contributions are welcome. See ./docs/CONTRIBUTING.md for guidance.
+Contributions are welcome. See the [contributor guide](docs/contributing.md) for setup, testing, and pull request guidance.
+-->
 
 ## License
 

@@ -55,7 +55,7 @@ func NewServer(conf *Config) (*Server, error) {
 	}
 	validCoinType = conf.ValidCoinType
 	validCoinEnvironment = conf.ValidCoinEnvironment
-	jwtValidator, err := newJwtValidator(conf)
+	jwtValidator, err := newJwtValidator(conf, redeemer)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -65,9 +65,6 @@ func NewServer(conf *Config) (*Server, error) {
 		jwtRedeemer:    redeemer,
 		jwtValidator:   jwtValidator,
 		ProtoValidator: validator,
-	}
-	if conf.RedeemExchangeTokens {
-		jwtValidator.redeemer = redeemer
 	}
 	return &server, nil
 }
@@ -111,7 +108,6 @@ func (s *Server) DepositOrCreateAccount(ctx context.Context, req *connect.Reques
 			err,
 		)
 	}
-	// FIXME: Nullify used JWT otherwise vulnerable to replay attacks.
 	quantity, err := s.jwtValidator.validate(ctx, req.Msg.GetJwt())
 	if err != nil {
 		return nil, status.Errorf(

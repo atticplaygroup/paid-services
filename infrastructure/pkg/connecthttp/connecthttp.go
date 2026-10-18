@@ -76,6 +76,7 @@ func Serve(options Options) {
 	corsHandler := CORS().Handler(mux)
 	log.Printf("server started at %s", options.Address)
 	server := &http.Server{
+		Addr:    options.Address,
 		Handler: corsHandler,
 	}
 	protocols := new(http.Protocols)

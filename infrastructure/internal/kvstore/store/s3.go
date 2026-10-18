@@ -25,7 +25,7 @@ type S3Config struct {
 	insecure  bool
 }
 
-// NewS3Config builds an S3/MinIO config. insecure=true uses HTTP (typical in-cluster MinIO).
+// NewS3Config builds an S3 config. insecure=true uses HTTP.
 func NewS3Config(address, accessKey, secretKey, bucket string, insecure bool) *S3Config {
 	return &S3Config{
 		address:   address,

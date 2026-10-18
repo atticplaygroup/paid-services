@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2e-oci
+  namespace: puller-ns
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tests
+          image: local/oci-test-client:dev
+          imagePullPolicy: IfNotPresent
+          command: [bun, test, --timeout, '60000', oci/e2e-oci.test.ts]
+          env:
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/outproxy-ca/ca.crt
+            - name: STORAGE_PROVIDER_ENVOY_URL
+              value: http://storage-provider-envoy.storage-provider-ns.svc.cluster.local:8080
+          volumeMounts:
+            - name: outproxy-ca
+              mountPath: /etc/outproxy-ca
+              readOnly: true
+            - name: dpop-keys
+              mountPath: /etc/dpop-keys
+              readOnly: true
+      volumes:
+        - name: outproxy-ca
+          secret:
+            secretName: outproxy-tls
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: dpop-keys
+          secret:
+            secretName: e2e-dpop-keys

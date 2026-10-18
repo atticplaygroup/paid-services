@@ -8,7 +8,7 @@ import {
 import { StorageBackend } from "./proto/gen/es/kvstore/v1/kvstore_pb.js"
 
 export interface MeterConfig {
-  alsAddress: string
+  deductionAddress: string
   defaultAmount: number
   disabled: boolean
 }
@@ -21,7 +21,7 @@ export class MeterClient {
     this.defaultAmount = config.defaultAmount
     if (!config.disabled) {
       const transport: Transport = createConnectTransport({
-        baseUrl: config.alsAddress,
+        baseUrl: config.deductionAddress,
         useBinaryFormat: true,
       })
       this.client = createClient(DeductionService, transport)

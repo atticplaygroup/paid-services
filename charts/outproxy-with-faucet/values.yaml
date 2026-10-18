@@ -1,0 +1,29 @@
+# Supply private identities or an existing cashier config Secret when hosting.
+outproxyImage: ""
+cashierImage: ""
+envoyImage: envoyproxy/envoy:v1.33.0
+imagePullPolicy: IfNotPresent
+serviceType: ClusterIP
+port: 8080
+proxyTls:
+  enabled: false
+  port: 8443
+  existingSecret: ''
+dpopMasterSecret: ''
+outproxyExistingSecret: ''
+cashierAccountSalt: ''
+cashier:
+  existingSecret: ''
+  principal: ''
+  accountSalt: ""
+  masterSecretMnemonic: ''
+  paymentEnvironment: PAYMENT_ENVIRONMENT_MAINNET
+  autoFaucet: false
+  walletMnemonic: ''
+  defaultChainDepositAmount: '100000000'
+  defaultProviderDepositAmount: '100000000'
+  accountOriginOverrides: {}
+  manifestOriginOverrides: {}
+fullnameOverride: ''
+tls:
+  existingProxySecret: ''

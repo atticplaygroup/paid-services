@@ -18,7 +18,7 @@ message Meter {
   string user_id = 3 [
     (buf.validate.field).required = true,
     (buf.validate.field).string = {
-      pattern: "^[a-z2-7]{59}$"
+      pattern: "^[a-z2-7]{62}$"
     }
   ];
   int64 ingress_bytes = 4 [(buf.validate.field).int64.gte = 0];
@@ -68,7 +68,7 @@ message ScheduleExternalDeductionRequest {
   ];
   string user_id = 2 [
     (buf.validate.field).string = {
-      pattern: "^[a-z2-7]{59}$"
+      pattern: "^[a-z2-7]{62}$"
     }
   ];
   string feedback_service_address = 3 [(buf.validate.field).string.uri = true];
@@ -83,7 +83,7 @@ message ReportUsageRequest {
   string user_id = 2 [
     (buf.validate.field).required = true,
     (buf.validate.field).string = {
-      pattern: "^[a-z2-7]{59}$"
+      pattern: "^[a-z2-7]{62}$"
     }
   ];
   repeated Usage usage = 3 [(buf.validate.field).repeated.max_items = 64];

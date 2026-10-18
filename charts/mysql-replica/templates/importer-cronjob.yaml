@@ -1,38 +1,70 @@
+{{- range $mode := list "sync" "importer" }}
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: mysql-replica-importer
-  namespace: {{ .Values.namespace }}
+  name: mysql-replica-{{ $mode }}
+  namespace: {{ $.Values.namespace }}
 spec:
-  schedule: "{{ .Values.importer.schedule }}"
+  schedule: "{{ $.Values.importer.schedule }}"
+  concurrencyPolicy: Forbid
+  suspend: {{ $.Values.importer.suspend | default false }}
   jobTemplate:
     spec:
+      backoffLimit: 0
       template:
         spec:
-          restartPolicy: OnFailure
+          restartPolicy: Never
           containers:
             - name: importer
-              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-              imagePullPolicy: {{ .Values.image.pullPolicy }}
-              command: ["/usr/local/bin/import"]
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              command: ["/usr/local/bin/{{ if eq $mode "sync" }}sync.sh{{ else }}import.sh{{ end }}"]
               env:
+                {{- if eq $mode "importer" }}
+                - name: IMPORT_MODE
+                  value: follow
                 - name: MYSQL_HOST
-                  value: "{{ .Values.mysql.host | default "mysql-replica" }}"
+                  value: "{{ $.Values.mysql.host | default "mysql-replica" }}"
                 - name: MYSQL_PORT
                   value: "3306"
                 - name: MYSQL_USER
                   value: "root"
                 - name: MYSQL_PASSWORD
-                  value: "{{ .Values.mysql.rootPassword }}"
+                  value: "{{ $.Values.mysql.rootPassword }}"
+                {{- else }}
                 - name: OCI_ADDRESS
-                  value: "{{ required "mysql-replica.importer.ociAddress must be non-empty" .Values.importer.ociAddress }}"
-                - name: BASELINE_REPO
-                  value: "{{ .Values.importer.baselineRepo }}"
-                - name: BASELINE_TAG
-                  value: "{{ .Values.importer.baselineTag }}"
-                - name: DELTA_REPO
-                  value: "{{ .Values.importer.deltaRepo }}"
-                - name: DELTA_TAG
-                  value: "{{ .Values.importer.deltaTag }}"
+                  value: "{{ required "mysql-replica.importer.ociAddress must be non-empty" $.Values.importer.ociAddress }}"
+                - name: MANIFEST_REPO
+                  value: "{{ $.Values.importer.manifestRepo }}"
+                - name: APPLICATION
+                  value: "{{ $.Values.importer.application }}"
+                - name: APPLICATION_OWNER
+                  value: "{{ $.Values.importer.applicationOwner }}"
+                - name: STORAGE_MODE
+                  value: {{ $.Values.importer.storageMode | quote }}
+                {{- end }}
+                - name: S3_BUCKET
+                  value: {{ $.Values.s3.bucket | quote }}
+                - name: S3_PREFIX
+                  value: {{ $.Values.s3.prefix | quote }}
+                - name: AWS_REGION
+                  value: {{ $.Values.s3.region | quote }}
+                - name: S3_ENDPOINT
+                  value: {{ if $.Values.s3.seaweedfs.enabled }}{{ $.Values.s3.endpoint | default (printf "http://mysql-replica-s3.%s.svc.cluster.local:8333" $.Values.namespace) | quote }}{{ else }}{{ $.Values.s3.endpoint | quote }}{{ end }}
                 - name: OUTPUT_DIR
-                  value: "/tmp/feature4-import"
+                  value: "/var/lib/mysql-artifacts"
+              {{- if or $.Values.s3.seaweedfs.enabled $.Values.s3.credentialsSecret }}
+              envFrom:
+                - secretRef:
+                    name: {{ $.Values.s3.credentialsSecret | default "mysql-replica-s3" }}
+              {{- end }}
+              volumeMounts:
+                - name: artifacts
+                  mountPath: /var/lib/mysql-artifacts
+          volumes:
+            - name: artifacts
+              persistentVolumeClaim:
+                claimName: mysql-replica-artifacts
+
+{{- end }}

@@ -16,7 +16,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: exchange
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ required "exchange.image.repository is required" .Values.image.repository }}:{{ (.Values.image.tag | default .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/exchange"]
           env:
@@ -25,8 +25,8 @@ spec:
             - { name: WITHDRAW_RECIPIENT_COUNT, value: {{ .Values.withdrawRecipientCount | quote }} }
             - { name: WITHDRAW_CHECK_STATUS_COUNT, value: {{ .Values.withdrawCheckStatusCount | quote }} }
             - { name: SUI_NETWORK, value: {{ .Values.suiNetwork | quote }} }
-            - { name: TOKEN_SIGNING_SEED, value: {{ .Values.tokenSigningSeed | quote }} }
-            - { name: WALLET_MNEMONIC, value: {{ .Values.walletMnemonic | quote }} }
+            - { name: TOKEN_SIGNING_SEED, valueFrom: { secretKeyRef: { name: {{ include "exchange.identitySecret" . }}, key: tokenSigningSeed } } }
+            - { name: WALLET_MNEMONIC, valueFrom: { secretKeyRef: { name: {{ include "exchange.identitySecret" . }}, key: walletMnemonic } } }
             - { name: MESSAGE_AUTH_TIMEOUT, value: {{ .Values.messageAuthTimeout | quote }} }
             - { name: MAX_DEPOSIT_EPOCH_GAP, value: {{ .Values.maxDepositEpochGap | quote }} }
             - { name: MAX_EXPIRATION_EXTENSION, value: {{ .Values.maxExpirationExtension | quote }} }

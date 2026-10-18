@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CashierService_GetAccessToken_FullMethodName = "/cashier.v1.CashierService/GetAccessToken"
-	CashierService_GetFunds_FullMethodName       = "/cashier.v1.CashierService/GetFunds"
+	CashierService_GetAccessToken_FullMethodName  = "/cashier.v1.CashierService/GetAccessToken"
+	CashierService_GetFunds_FullMethodName        = "/cashier.v1.CashierService/GetFunds"
+	CashierService_GetChainBalance_FullMethodName = "/cashier.v1.CashierService/GetChainBalance"
 )
 
 // CashierServiceClient is the client API for CashierService service.
@@ -29,6 +30,8 @@ const (
 type CashierServiceClient interface {
 	GetAccessToken(ctx context.Context, in *GetAccessTokenRequest, opts ...grpc.CallOption) (*GetAccessTokenResponse, error)
 	GetFunds(ctx context.Context, in *GetFundsRequest, opts ...grpc.CallOption) (*GetFundsResponse, error)
+	// Inspect the configured chain wallet without requesting funds.
+	GetChainBalance(ctx context.Context, in *GetChainBalanceRequest, opts ...grpc.CallOption) (*GetChainBalanceResponse, error)
 }
 
 type cashierServiceClient struct {
@@ -59,12 +62,24 @@ func (c *cashierServiceClient) GetFunds(ctx context.Context, in *GetFundsRequest
 	return out, nil
 }
 
+func (c *cashierServiceClient) GetChainBalance(ctx context.Context, in *GetChainBalanceRequest, opts ...grpc.CallOption) (*GetChainBalanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetChainBalanceResponse)
+	err := c.cc.Invoke(ctx, CashierService_GetChainBalance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CashierServiceServer is the server API for CashierService service.
 // All implementations must embed UnimplementedCashierServiceServer
 // for forward compatibility.
 type CashierServiceServer interface {
 	GetAccessToken(context.Context, *GetAccessTokenRequest) (*GetAccessTokenResponse, error)
 	GetFunds(context.Context, *GetFundsRequest) (*GetFundsResponse, error)
+	// Inspect the configured chain wallet without requesting funds.
+	GetChainBalance(context.Context, *GetChainBalanceRequest) (*GetChainBalanceResponse, error)
 	mustEmbedUnimplementedCashierServiceServer()
 }
 
@@ -80,6 +95,9 @@ func (UnimplementedCashierServiceServer) GetAccessToken(context.Context, *GetAcc
 }
 func (UnimplementedCashierServiceServer) GetFunds(context.Context, *GetFundsRequest) (*GetFundsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetFunds not implemented")
+}
+func (UnimplementedCashierServiceServer) GetChainBalance(context.Context, *GetChainBalanceRequest) (*GetChainBalanceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChainBalance not implemented")
 }
 func (UnimplementedCashierServiceServer) mustEmbedUnimplementedCashierServiceServer() {}
 func (UnimplementedCashierServiceServer) testEmbeddedByValue()                        {}
@@ -138,6 +156,24 @@ func _CashierService_GetFunds_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CashierService_GetChainBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChainBalanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CashierServiceServer).GetChainBalance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CashierService_GetChainBalance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CashierServiceServer).GetChainBalance(ctx, req.(*GetChainBalanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CashierService_ServiceDesc is the grpc.ServiceDesc for CashierService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +188,10 @@ var CashierService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetFunds",
 			Handler:    _CashierService_GetFunds_Handler,
+		},
+		{
+			MethodName: "GetChainBalance",
+			Handler:    _CashierService_GetChainBalance_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

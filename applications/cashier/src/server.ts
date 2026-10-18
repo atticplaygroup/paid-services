@@ -61,5 +61,27 @@ export function createCashierApp(config: CashierConfig = loadCashierConfig(), de
     }
   })
 
+  app.post("/cashier.v1.CashierService/GetChainBalance", async (context) => {
+    const principal = context.req.header("x-user-id")
+    if (!principal) return context.text("missing x-user-id", 401)
+    const requestId = context.req.header("x-request-id")
+    if (!requestId) return context.text("missing x-request-id", 400)
+    try {
+      const body = await context.req.json()
+      const response = await cashier.getChainBalance(
+        {
+          preferredPaymentCoin: enumValue(PaymentCoinSchema, body.preferredPaymentCoin),
+          preferredPaymentEnvironment: enumValue(PaymentEnvironmentSchema, body.preferredPaymentEnvironment),
+        },
+        principal,
+      )
+      return context.json({ address: response.address, balance: response.balance })
+    } catch (error) {
+      console.error("getChainBalance failed:", error)
+      if (error instanceof Error && error.message === "unknown principal") return context.text(error.message, 403)
+      return context.text(error instanceof Error ? error.message : "bad request", 400)
+    }
+  })
+
   return app
 }

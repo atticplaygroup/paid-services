@@ -1,3 +1,4 @@
+AGENTS.md
 infrastructure/bin/
 toolkit
 node_modules/
@@ -11,3 +12,6 @@ testing/.env
 *.jsonkey
 charts/*/charts/*.tgz
 *.tgz
+
+testing/quickstart/.kubeconfig
+.release/

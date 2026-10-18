@@ -17,7 +17,6 @@ import (
 type Token struct {
 	*jwt.RegisteredClaims
 	Quantity        int64              `json:"quantity"`
-	Usage           pb.JwtUsage        `json:"usage"`
 	CoinType        pb.CoinType        `json:"coin"`
 	CoinEnvironment pb.CoinEnvironment `json:"env"`
 }
@@ -25,7 +24,7 @@ type Token struct {
 func (s *Server) generateJwt(audience string, quantity int64) (string, error) {
 	claims := &Token{
 		RegisteredClaims: &jwt.RegisteredClaims{
-			Issuer:    s.config.TokenSigningKeyId,
+			Issuer:    s.config.TokenIssuer,
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Audience:  jwt.ClaimStrings{audience},
@@ -33,7 +32,6 @@ func (s *Server) generateJwt(audience string, quantity int64) (string, error) {
 			ID:        uuid.NewString(),
 		},
 		Quantity:        quantity,
-		Usage:           pb.JwtUsage_JWT_USAGE_CREATE_SESSION,
 		CoinType:        pb.CoinType(s.config.TokenCoinType),
 		CoinEnvironment: pb.CoinEnvironment(s.config.TokenCoinEnvironment),
 	}
@@ -55,10 +53,10 @@ func (s *Server) signToken(claims *Token) (string, error) {
 	return token.SignedString(s.config.TokenSigningPrivateKey)
 }
 
-func (s *Server) BuyToken(
+func (s *Server) BuyPoints(
 	ctx context.Context,
-	connectReq *connect.Request[pb.BuyTokenRequest],
-) (*connect.Response[pb.BuyTokenResponse], error) {
+	connectReq *connect.Request[pb.BuyPointsRequest],
+) (*connect.Response[pb.BuyPointsResponse], error) {
 	session, err := middleware.SessionFromContext(ctx)
 	if err != nil {
 		return nil, status.Errorf(
@@ -77,7 +75,7 @@ func (s *Server) BuyToken(
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
 	qtx := s.store.WithTx(tx)
-	err = s.store.BuyTokenTx(ctx, qtx, &store.BuyTokenTxParams{
+	err = s.store.BuyPointsTx(ctx, qtx, &store.BuyPointsTxParams{
 		Req:            req,
 		BuyerPrincipal: session.UserId,
 	})
@@ -103,7 +101,7 @@ func (s *Server) BuyToken(
 			err,
 		)
 	}
-	return connect.NewResponse(&pb.BuyTokenResponse{
+	return connect.NewResponse(&pb.BuyPointsResponse{
 		Token: jwt,
 	}), nil
 }

@@ -38,12 +38,17 @@ const (
 	CashierServiceGetAccessTokenProcedure = "/cashier.v1.CashierService/GetAccessToken"
 	// CashierServiceGetFundsProcedure is the fully-qualified name of the CashierService's GetFunds RPC.
 	CashierServiceGetFundsProcedure = "/cashier.v1.CashierService/GetFunds"
+	// CashierServiceGetChainBalanceProcedure is the fully-qualified name of the CashierService's
+	// GetChainBalance RPC.
+	CashierServiceGetChainBalanceProcedure = "/cashier.v1.CashierService/GetChainBalance"
 )
 
 // CashierServiceClient is a client for the cashier.v1.CashierService service.
 type CashierServiceClient interface {
 	GetAccessToken(context.Context, *connect.Request[v1.GetAccessTokenRequest]) (*connect.Response[v1.GetAccessTokenResponse], error)
 	GetFunds(context.Context, *connect.Request[v1.GetFundsRequest]) (*connect.Response[v1.GetFundsResponse], error)
+	// Inspect the configured chain wallet without requesting funds.
+	GetChainBalance(context.Context, *connect.Request[v1.GetChainBalanceRequest]) (*connect.Response[v1.GetChainBalanceResponse], error)
 }
 
 // NewCashierServiceClient constructs a client for the cashier.v1.CashierService service. By
@@ -69,13 +74,20 @@ func NewCashierServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(cashierServiceMethods.ByName("GetFunds")),
 			connect.WithClientOptions(opts...),
 		),
+		getChainBalance: connect.NewClient[v1.GetChainBalanceRequest, v1.GetChainBalanceResponse](
+			httpClient,
+			baseURL+CashierServiceGetChainBalanceProcedure,
+			connect.WithSchema(cashierServiceMethods.ByName("GetChainBalance")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // cashierServiceClient implements CashierServiceClient.
 type cashierServiceClient struct {
-	getAccessToken *connect.Client[v1.GetAccessTokenRequest, v1.GetAccessTokenResponse]
-	getFunds       *connect.Client[v1.GetFundsRequest, v1.GetFundsResponse]
+	getAccessToken  *connect.Client[v1.GetAccessTokenRequest, v1.GetAccessTokenResponse]
+	getFunds        *connect.Client[v1.GetFundsRequest, v1.GetFundsResponse]
+	getChainBalance *connect.Client[v1.GetChainBalanceRequest, v1.GetChainBalanceResponse]
 }
 
 // GetAccessToken calls cashier.v1.CashierService.GetAccessToken.
@@ -88,10 +100,17 @@ func (c *cashierServiceClient) GetFunds(ctx context.Context, req *connect.Reques
 	return c.getFunds.CallUnary(ctx, req)
 }
 
+// GetChainBalance calls cashier.v1.CashierService.GetChainBalance.
+func (c *cashierServiceClient) GetChainBalance(ctx context.Context, req *connect.Request[v1.GetChainBalanceRequest]) (*connect.Response[v1.GetChainBalanceResponse], error) {
+	return c.getChainBalance.CallUnary(ctx, req)
+}
+
 // CashierServiceHandler is an implementation of the cashier.v1.CashierService service.
 type CashierServiceHandler interface {
 	GetAccessToken(context.Context, *connect.Request[v1.GetAccessTokenRequest]) (*connect.Response[v1.GetAccessTokenResponse], error)
 	GetFunds(context.Context, *connect.Request[v1.GetFundsRequest]) (*connect.Response[v1.GetFundsResponse], error)
+	// Inspect the configured chain wallet without requesting funds.
+	GetChainBalance(context.Context, *connect.Request[v1.GetChainBalanceRequest]) (*connect.Response[v1.GetChainBalanceResponse], error)
 }
 
 // NewCashierServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -113,12 +132,20 @@ func NewCashierServiceHandler(svc CashierServiceHandler, opts ...connect.Handler
 		connect.WithSchema(cashierServiceMethods.ByName("GetFunds")),
 		connect.WithHandlerOptions(opts...),
 	)
+	cashierServiceGetChainBalanceHandler := connect.NewUnaryHandler(
+		CashierServiceGetChainBalanceProcedure,
+		svc.GetChainBalance,
+		connect.WithSchema(cashierServiceMethods.ByName("GetChainBalance")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cashier.v1.CashierService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CashierServiceGetAccessTokenProcedure:
 			cashierServiceGetAccessTokenHandler.ServeHTTP(w, r)
 		case CashierServiceGetFundsProcedure:
 			cashierServiceGetFundsHandler.ServeHTTP(w, r)
+		case CashierServiceGetChainBalanceProcedure:
+			cashierServiceGetChainBalanceHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -134,4 +161,8 @@ func (UnimplementedCashierServiceHandler) GetAccessToken(context.Context, *conne
 
 func (UnimplementedCashierServiceHandler) GetFunds(context.Context, *connect.Request[v1.GetFundsRequest]) (*connect.Response[v1.GetFundsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cashier.v1.CashierService.GetFunds is not implemented"))
+}
+
+func (UnimplementedCashierServiceHandler) GetChainBalance(context.Context, *connect.Request[v1.GetChainBalanceRequest]) (*connect.Response[v1.GetChainBalanceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cashier.v1.CashierService.GetChainBalance is not implemented"))
 }

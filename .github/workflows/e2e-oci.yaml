@@ -1,0 +1,50 @@
+name: OCI end-to-end
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/master') }}
+
+jobs:
+  oci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IMAGE_PREFIX: ${{ vars.IMAGE_PREFIX || 'ghcr.io/atticplaygroup/paid-services' }}
+      IMAGE_TAG: ${{ github.sha }}
+      CLUSTER_NAME: oci-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare runner paths
+        run: |
+          mkdir -p "$RUNNER_TOOL_CACHE"
+          printf 'KUBECONFIG=%s/oci.kubeconfig\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: Azure/setup-helm@v4
+        with:
+          version: v3.18.6
+      - uses: helm/kind-action@v1.13.0
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}
+          kubeconfig: ${{ env.KUBECONFIG }}
+          node_image: kindest/node:v1.34.0
+          kubectl_version: v1.34.0
+      - name: Build OCI integration images
+        run: bash testing/oci/build.sh
+      - name: Deploy OCI integration workloads
+        run: bash testing/oci/deploy.sh
+      - name: Run OCI end-to-end tests
+        run: bash testing/oci/test.sh
+      - name: Failure diagnostics
+        if: failure()
+        run: bash testing/oci/diagnostics.sh

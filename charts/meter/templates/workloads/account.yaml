@@ -16,7 +16,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: account
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ required "meter.image.repository is required" .Values.image.repository }}:{{ (.Values.image.tag | default .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/account"]
           ports:

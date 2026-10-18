@@ -1,0 +1,245 @@
+# Demo topology: the proxy party is an independently installable subchart.
+proxy:
+  outproxyImage: local/outproxy:dev
+  cashierImage: local/cashier:dev
+  envoyImage: envoyproxy/envoy:v1.33.0
+  imagePullPolicy: IfNotPresent
+  serviceType: ClusterIP
+  port: 8080
+  proxyTls:
+    enabled: false
+    port: 8443
+    existingSecret: ''
+  dpopMasterSecret: legal winner thank year wave sausage worth useful legal winner thank yellow
+  cashierAccountSalt: quickstart-cashier-account
+  cashier:
+    existingSecret: ''
+    principal: bahi5maysecsg4flhocr2ogq2kczariervnol4dfhnobodrzbs3ssvfod2qwo2
+    accountSalt: quickstart-demo-salt!
+    masterSecretMnemonic: legal winner thank year wave sausage worth useful legal
+      winner thank yellow
+    paymentEnvironment: PAYMENT_ENVIRONMENT_DEVNET
+    autoFaucet: true
+    walletMnemonic: margin chase tail name extra open massage symptom invest poem
+      canal punch
+    defaultChainDepositAmount: '100000000'
+    defaultProviderDepositAmount: '100000000'
+    accountOriginOverrides:
+      quickstart-provider-envoy: https://quickstart-provider-envoy:8443
+      quickstart-exchange-exchange: http://quickstart-exchange-envoy:8080
+    manifestOriginOverrides:
+      quickstart-provider-envoy: https://quickstart-provider-envoy:8443
+      quickstart-provider-envoy:8080: https://quickstart-provider-envoy:8443
+      quickstart-provider-envoy:8443: https://quickstart-provider-envoy:8443
+  tls:
+    existingProxySecret: quickstart-proxy-tls
+redis:
+  image: valkey/valkey:8-alpine
+  name: quickstart-redis
+postgres:
+  image: postgres:16-alpine
+  name: quickstart-postgres
+  user: postgres
+  password: quickstart-demo
+  database: paid
+  storage: 1Gi
+seed:
+  enabled: true
+  schedule: 0 */6 * * *
+  suspend: false
+  ttlSeconds: 31536000
+provider:
+  fullnameOverride: quickstart-provider
+  image:
+    repository: local/infrastructure
+    tag: dev
+    pullPolicy: IfNotPresent
+  envoyImage:
+    repository: envoyproxy/envoy
+    tag: v1.33.0
+    pullPolicy: IfNotPresent
+  redisAddress: quickstart-redis:6379
+  s3:
+    enabled: true
+    secure: false
+    retentionRules:
+      image:
+        repository: local/s3-retention-rules
+        tag: dev
+    accessKey: s3demo
+    secretKey: s3demoSecret
+    image:
+      repository: chrislusf/seaweedfs
+      # SeaweedFS 4.48; publisher image pinned by digest.
+      digest: sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+      pullPolicy: IfNotPresent
+    endpoint: quickstart-provider-s3:9000
+  env:
+    tlsSecretName: quickstart-provider-tls
+    validCoinType: 1
+    validCoinEnvironment: 2
+    faucetMode: false
+    accountDomains:
+    - account.quickstart-provider-envoy
+    validAudience: bahi5maysear7xwht64tei4wjtnnxnw5nhbsjlvpxuxkiwly7c3v7e6lob6xya
+    providerManifest: '{"version":"v1","id":"bahi5maysear7xwht64tei4wjtnnxnw5nhbsjlvpxuxkiwly7c3v7e6lob6xya","exchanges":[{"id":"quickstart-exchange","hosts":["http://quickstart-exchange-exchange:8080"],"payment_coin":"PAYMENT_COIN_SUI","payment_environment":"PAYMENT_ENVIRONMENT_DEVNET"}],"signature":"eyJhbGciOiJFUzI1NiIsInR5cCI6IlBBSUQtcHJvdmlkZXItbWFuaWZlc3QiLCJqd2siOnsiY3J2IjoiUC0yNTYiLCJrdHkiOiJFQyIsIngiOiJKT2ZjMnZjNlNMdUtFV0UtVXpFSk1mVnVtZzB0eUVoandRMXVLSFlPNFNVIiwieSI6IllPVFdFc2NnUGluaEowMTBlcjFOeE5NX3hFZEswc1FDamN1TVhLNm1SYXcifX0.eyJ2ZXJzaW9uIjoidjEiLCJpZCI6ImJhaGk1bWF5c2Vhcjd4d2h0NjR0ZWk0d2p0bm54bnc1bmhic2psdnB4dXhraXdseTdjM3Y3ZTZsb2I2eHlhIiwiZXhjaGFuZ2VzIjpbeyJpZCI6InF1aWNrc3RhcnQtZXhjaGFuZ2UiLCJob3N0cyI6WyJodHRwOi8vcXVpY2tzdGFydC1leGNoYW5nZS1leGNoYW5nZTo4MDgwIl0sInBheW1lbnRfY29pbiI6IlBBWU1FTlRfQ09JTl9TVUkiLCJwYXltZW50X2Vudmlyb25tZW50IjoiUEFZTUVOVF9FTlZJUk9OTUVOVF9ERVZORVQifV19.ffwnxetwGRzpk0aRrokF5W8yMA7HAy4P2yYGF8RlFDJ65ixJv2fArVJT1Rbgn_EC4WF-9lfdEpD14e7yXIwIcw"}'
+  meter:
+    fullnameOverride: quickstart-provider-meter
+    image:
+      repository: local/infrastructure
+      tag: dev
+      pullPolicy: IfNotPresent
+    redis:
+      host: quickstart-redis
+      address: quickstart-redis:6379
+    account:
+      validCoinType: 1
+      validCoinEnvironment: 2
+      faucetMode: false
+      trustedIssuers:
+      - issuer: https://exchange.quickstart.demo
+        jwksUrl: http://quickstart-exchange-exchange:8080/.well-known/jwks.json
+      validAudience: bahi5maysear7xwht64tei4wjtnnxnw5nhbsjlvpxuxkiwly7c3v7e6lob6xya
+    deduction:
+      feedbackEnabled: true
+      outproxyAddress: http://quickstart-internal:9090
+    priceSeed:
+      entries:
+      - key: p:3:1
+        fields:
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p:3:3
+        fields:
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p::8080:/kvstore.v1.MeteredStorageService/GetCASValue
+        fields:
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0.01'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p::8080:/kvstore.v1.MeteredStorageService/CreateCASValue
+        fields:
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p::8080:/account.v1.AccountService/GetBalance
+        fields:
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p::8080:/account.v1.AccountService/DepositOrCreateAccount
+        fields:
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p:quickstart-provider-envoy:8443:/kvstore.v1.MeteredStorageService/GetCASValue
+        fields: &id001
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0.01'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p:quickstart-provider-envoy:8443:/kvstore.v1.MeteredStorageService/CreateCASValue
+        fields: &id002
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p:quickstart-provider-envoy:8443:/account.v1.AccountService/GetBalance
+        fields: &id003
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p:quickstart-provider-envoy:8443:/account.v1.AccountService/DepositOrCreateAccount
+        fields: &id004
+          METER_TYPE_GET: '0'
+          METER_TYPE_SET: '0'
+          METER_TYPE_DURATION_MS: '0'
+          METER_TYPE_INGRESS_BYTES: '0'
+          METER_TYPE_EGRESS_BYTES: '0'
+          METER_TYPE_PEAK_MEMORY_BYTES: '0'
+      - key: p::8443:/kvstore.v1.MeteredStorageService/GetCASValue
+        fields: *id001
+      - key: p::8443:/kvstore.v1.MeteredStorageService/CreateCASValue
+        fields: *id002
+      - key: p::8443:/account.v1.AccountService/GetBalance
+        fields: *id003
+      - key: p::8443:/account.v1.AccountService/DepositOrCreateAccount
+        fields: *id004
+    authz:
+      allowZeroBalanceHTUs:
+      - /kvstore.v1.MeteredStorageService/Ping
+      - /account.v1.AccountService/GetBalance
+      - /account.v1.AccountService/DepositOrCreateAccount
+exchange:
+  fullnameOverride: quickstart-exchange
+  image:
+    repository: local/infrastructure
+    tag: dev
+    pullPolicy: IfNotPresent
+  envoyImage:
+    repository: envoyproxy/envoy
+    tag: v1.33.0
+    pullPolicy: IfNotPresent
+  databaseURL: postgres://postgres:quickstart-demo@quickstart-postgres:5432/paid?sslmode=disable
+  walletMnemonic: test test test test test test test test test test test junk
+  suiNetwork: devnet
+  tokenSigningSeed: "0x0000000000000000000000000000000000000000000000000000000000000001"
+  tokenIssuer: https://exchange.quickstart.demo
+  tokenCoinEnvironment: 2
+  env:
+    accountDomains:
+    - account.quickstart-exchange-envoy
+  meter:
+    fullnameOverride: quickstart-exchange-meter
+    image:
+      repository: local/infrastructure
+      tag: dev
+      pullPolicy: IfNotPresent
+    exchangeDatabaseURL: postgres://postgres:quickstart-demo@quickstart-postgres:5432/paid?sslmode=disable
+    redis:
+      host: quickstart-redis
+      address: quickstart-redis:6379
+      seedJobEnabled: false
+    account:
+      faucetMode: false
+      validCoinEnvironment: 2
+    authz:
+      allowZeroBalanceHTUs:
+      - /account.v1.AccountService/GetBalance
+      - /account.v1.AccountService/DepositOrCreateAccount
+      - /exchange.v1.ExchangeService/Ping
+      - /exchange.v1.ExchangeService/ListPaymentMethods
+      - /exchange.v1.ExchangeService/GetChallenge
+      - /exchange.v1.ExchangeService/Deposit
+tls:
+  generateDemoCertificates: true
+  existingProviderSecret: ''
+  dnsNames: []

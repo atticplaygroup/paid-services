@@ -3,7 +3,7 @@ name: kvstore
 description: Reusable PAID kvstore storage stack with optional gateway, MinIO, and colocated metering.
 type: application
 version: 0.1.0
-appVersion: "dev"
+appVersion: "main"
 dependencies:
   - name: meter
     version: 0.1.0

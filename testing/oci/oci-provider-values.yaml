@@ -1,0 +1,57 @@
+# OCI integration CI values for the production chart.
+fullnameOverride: oci-provider
+ociImage:
+  repository: local/oci
+  tag: dev
+  pullPolicy: IfNotPresent
+env:
+  kvstoreAddress: https://storage-provider-envoy.storage-provider-ns.svc.cluster.local:8443
+  outproxyAddress: http://oci-provider-outproxy.oci-provider-ns.svc.cluster.local:9090
+  outproxyCaSecretName: outproxy-tls
+  tlsSecretName: provider-tls
+  deductionAddress: oci-provider-meter-deduction:9193
+  deductionLogName: ap_deduction
+  additionalRequestHeadersToLog:
+  - x-external-request-id
+  accountDomains:
+  - account.oci-provider-envoy
+  deductionAmount: '1'
+  readOnlyMode: 'true'
+  dpopMasterSecret: abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about
+  scheduleExternalDeduction: 'true'
+  externalDeductionDelaySeconds: '0'
+meter:
+  fullnameOverride: oci-provider-meter
+  image:
+    repository: local/infrastructure
+    tag: dev
+    pullPolicy: IfNotPresent
+  redis:
+    enabled: false
+    seedJobEnabled: true
+    host: oci-provider-redis
+    address: oci-provider-redis:6379
+  account:
+    validAudience: bahi5mayseakgxo3yvoqqco7lttd7c7mzxvos4f45ffo4jv27fgctrrgc2rv3s
+    validCoinType: '1'
+    validCoinEnvironment: '4'
+    faucetMode: 'true'
+  deduction:
+    feedbackEnabled: 'false'
+    feedbackTTLSeconds: '10'
+  priceSeed:
+    entries:
+    - key: p:3:1
+      fields:
+        METER_TYPE_DURATION_MS: '0'
+        METER_TYPE_INGRESS_BYTES: '1'
+        METER_TYPE_EGRESS_BYTES: '1'
+    - key: p:3:3
+      fields:
+        METER_TYPE_DURATION_MS: '0'
+        METER_TYPE_INGRESS_BYTES: '1'
+        METER_TYPE_EGRESS_BYTES: '1'
+image:
+  repository: local/infrastructure
+  tag: dev
+  pullPolicy: IfNotPresent

@@ -1,21 +1,26 @@
 namespace: proposer-ns
 image:
-  repository: paid-feature4-mysql
-  tag: dev
+  repository: ghcr.io/atticplaygroup/paid-services/mysql-tools
+  # Defaults to Chart.appVersion; CI supplies a commit-specific tag.
+  tag: ""
   pullPolicy: IfNotPresent
+persistence:
+  size: 1Gi
 mysql:
   rootPassword: root
   database: app
+  # Controls both baseline snapshots and server-side binlog filtering.
+  # Changes require a MySQL restart and a fresh baseline.
   exportedSchemas:
     - user_profile
   gtidMode: ON
   binlogFormat: ROW
-  binlogDoDb: ""
+  binlogExpireLogsSeconds: 2592000 # MySQL native retention: 30 days.
 packer:
-  schedule: "*/5 * * * *"
+  schedule: "0 0 * * 0" # Weekly baseline
+  deltaSchedule: "*/5 * * * *"
   baselineRepo: baseline_app
   deltaRepo: binlog_app
-  ociAddress: "" # oci-proposer:3000
+  ociAddress: "" # Required OCI registry host:port, deployed separately
   application: medium
   manifestRepo: app-manifests
-  tag: v1.0.0

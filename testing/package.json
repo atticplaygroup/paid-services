@@ -3,6 +3,7 @@
   "type": "module",
   "dependencies": {
     "dpop": "^2.1.1",
+    "ioredis": "^5.4.1",
     "multiformats": "^14.0.5"
   }
 }

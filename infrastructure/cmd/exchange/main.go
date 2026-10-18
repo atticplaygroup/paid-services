@@ -21,7 +21,8 @@ import (
 
 func main() {
 	conf := exchange.LoadConfig(".env")
-	log.Printf("conf: %+v", conf)
+	log.Printf("exchange network=%s issuer=%s signing_key_id=%s wallet_address=%s",
+		conf.SuiNetwork, conf.TokenIssuer, conf.TokenSigningKeyId, conf.WalletSigner.Address)
 
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, conf.DatabaseURL)

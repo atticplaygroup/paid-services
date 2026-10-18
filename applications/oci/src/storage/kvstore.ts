@@ -10,8 +10,30 @@ import {
 import { CID } from "multiformats/cid"
 import { create } from "multiformats/hashes/digest"
 import { generateProof } from "dpop"
+import { AsyncLocalStorage } from "node:async_hooks"
+import type { Interceptor } from "@connectrpc/connect"
 
-type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+export type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+export interface OutgoingRequestIdentity {
+  requestId?: string
+  externalRequestId?: string
+}
+
+const requestIdentityStorage = new AsyncLocalStorage<OutgoingRequestIdentity>()
+
+export function withRequestIdentity<T>(identity: OutgoingRequestIdentity, callback: () => Promise<T>): Promise<T> {
+  return requestIdentityStorage.run(identity, callback)
+}
+
+function requestIdentityInterceptor(): Interceptor {
+  return (next) => async (request) => {
+    const identity = requestIdentityStorage.getStore()
+    if (identity?.requestId) request.header.set("x-request-id", identity.requestId)
+    if (identity?.externalRequestId) request.header.set("x-external-request-id", identity.externalRequestId)
+    return next(request)
+  }
+}
 
 function createDpopFetch(baseUrl: string, keypair: CryptoKeyPair): FetchFn {
   return async (input, init) => {
@@ -28,17 +50,17 @@ function createDpopFetch(baseUrl: string, keypair: CryptoKeyPair): FetchFn {
   }
 }
 
-function createProxiedFetch(outproxyAddress: string, userId?: string, externalRequestId?: string): FetchFn {
+export function createProxiedFetch(outproxyAddress: string): FetchFn {
   return async (input, init) => {
     const headers = new Headers(init?.headers)
-    if (userId) {
-      headers.set("x-user-id", userId)
-    }
-    if (externalRequestId) {
-      headers.set("x-external-request-id", externalRequestId)
-    }
     return globalThis.fetch(input, { ...init, headers, proxy: outproxyAddress } as any)
   }
+}
+
+export async function principalFromJwk(jwk: JsonWebKey): Promise<string> {
+  const canonical = JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y })
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)))
+  return CID.create(1, 0xeb51, create(0x12, digest)).toString()
 }
 
 export class KvstoreClient {
@@ -53,12 +75,17 @@ export class KvstoreClient {
     this.outproxyAddress = outproxyAddress
   }
 
-  private createClient(userId?: string, externalRequestId?: string): Client<typeof MeteredStorageService> {
-    const transportOptions: any = { baseUrl: this.baseUrl, useBinaryFormat: true, fetch: this.fetchOverride }
+  private createClient(): Client<typeof MeteredStorageService> {
+    const transportOptions: any = {
+      baseUrl: this.baseUrl,
+      useBinaryFormat: true,
+      fetch: this.fetchOverride,
+      interceptors: [requestIdentityInterceptor()],
+    }
     if (this.fetchOverride) {
       transportOptions.fetch = this.fetchOverride
     } else if (this.outproxyAddress) {
-      transportOptions.fetch = createProxiedFetch(this.outproxyAddress, userId, externalRequestId)
+      transportOptions.fetch = createProxiedFetch(this.outproxyAddress)
     } else if (this.dpopKeypair) {
       transportOptions.fetch = createDpopFetch(this.baseUrl, this.dpopKeypair)
     }
@@ -74,17 +101,17 @@ export class KvstoreClient {
     return CID.create(1, 0x55, mhDigest).toString()
   }
 
-  async getBlob(digest: string, userId?: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  async getBlob(digest: string): Promise<Uint8Array<ArrayBuffer> | null> {
     const key = this.sha256ToCid(digest)
     try {
-      const res = await this.createClient(userId).getCASValue({ key })
+      const res = await this.createClient().getCASValue({ key })
       return new Uint8Array(res.value) as Uint8Array<ArrayBuffer>
     } catch { return null }
   }
 
-  async putBlob(digest: string, value: Uint8Array, userId?: string, externalRequestId?: string): Promise<void> {
+  async putBlob(digest: string, value: Uint8Array): Promise<void> {
     const key = this.sha256ToCid(digest)
-    await this.createClient(userId, externalRequestId).createCASValue({
+    await this.createClient().createCASValue({
       storageBackend: StorageBackend.BLOB_STORAGE,
       codec: Codec.RAW,
       key,
@@ -93,18 +120,18 @@ export class KvstoreClient {
     })
   }
 
-  async putManifestTag(name: string, tag: string, owner: string, body: Uint8Array<ArrayBuffer>, revision: number, userId?: string, externalRequestId?: string, anchorRevision?: number): Promise<void> {
+  async putManifestTag(name: string, tag: string, body: Uint8Array<ArrayBuffer>, revision: number, anchorRevision?: number): Promise<void> {
     const key = `oci/manifests/${name}/${tag}`
     const cid = this.sha256ToCid(`sha256:${await digestOf(body)}`)
-    const anchor = await this.signAnchor({ owner, key, cid, revision: BigInt(anchorRevision ?? revision) })
-    await this.createClient(userId, externalRequestId).createProtectedValueAnchor({ anchor })
+    const anchor = await this.signAnchor({ key, cid, revision: BigInt(anchorRevision ?? revision) })
+    await this.createClient().createProtectedValueAnchor({ anchor })
   }
 
   async getManifestTag(name: string, tag: string, owner: string): Promise<Uint8Array<ArrayBuffer> | null> {
     try {
       const res = await this.createClient().getProtectedValueAnchor({ owner, key: `oci/manifests/${name}/${tag}` })
       const anchor = res.anchor as Anchor
-      await this.verifyAnchor(anchor)
+      await this.verifyAnchor(anchor, owner, `oci/manifests/${name}/${tag}`)
       const content = await this.getBlob(`sha256:${cidToDigestHex(anchor.cid)}`)
       if (!content) return null
       if (this.sha256ToCid(`sha256:${await digestOf(content)}`) !== anchor.cid) return null
@@ -112,9 +139,13 @@ export class KvstoreClient {
     } catch { return null }
   }
 
-  private async signAnchor(input: { owner: string; key: string; cid: string; revision: bigint }): Promise<Anchor> {
+  private async signAnchor(input: { key: string; cid: string; revision: bigint }): Promise<Anchor> {
     if (!this.dpopKeypair) throw new Error("DPOP_PRIVATE_KEY is required to sign protected value anchors")
-    const payload = { ...input, revision: Number(input.revision), v: "paid.kvstore.anchor.v1" }
+    const ownerJwk = await crypto.subtle.exportKey("jwk", this.dpopKeypair.publicKey)
+    delete ownerJwk.key_ops
+    delete ownerJwk.ext
+    const owner = await principalFromJwk(ownerJwk)
+    const payload = { owner, key: input.key, cid: input.cid, revision: Number(input.revision), v: "paid.meter.anchor.v1" }
     const canonical = JSON.stringify(payload, Object.keys(payload).sort())
     const header = encodeBase64Url(new TextEncoder().encode(JSON.stringify({ alg: "ES256", typ: "JWT" })))
     const encodedPayload = encodeBase64Url(new TextEncoder().encode(canonical))
@@ -123,11 +154,8 @@ export class KvstoreClient {
       this.dpopKeypair.privateKey,
       encodeSigningInput(`${header}.${encodedPayload}`),
     )
-    const ownerJwk = await crypto.subtle.exportKey("jwk", this.dpopKeypair.publicKey)
-    delete ownerJwk.key_ops
-    delete ownerJwk.ext
     const anchor = {
-      owner: input.owner,
+      owner,
       key: input.key,
       cid: input.cid,
       revision: input.revision,
@@ -138,11 +166,14 @@ export class KvstoreClient {
     return anchor
   }
 
-  private async verifyAnchor(anchor: Anchor): Promise<void> {
+  private async verifyAnchor(anchor: Anchor, owner?: string, key?: string): Promise<void> {
+    if (owner !== undefined && anchor.owner !== owner) throw new Error("anchor owner mismatch")
+    if (key !== undefined && anchor.key !== key) throw new Error("anchor key mismatch")
     const parts = anchor.signature.split(".")
     if (parts.length !== 3) throw new Error("invalid anchor signature")
     const jwk = JSON.parse(anchor.ownerJwk)
     if (jwk.kty !== "EC" || jwk.crv !== "P-256" || jwk.d) throw new Error("invalid owner JWK")
+    if (await principalFromJwk(jwk) !== anchor.owner) throw new Error("anchor signer mismatch")
     const publicKey = await crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"])
     const valid = await crypto.subtle.verify(
       { name: "ECDSA", hash: "SHA-256" },
@@ -157,7 +188,7 @@ export class KvstoreClient {
       key: anchor.key,
       cid: anchor.cid,
       revision: Number(anchor.revision),
-      v: "paid.kvstore.anchor.v1",
+      v: "paid.meter.anchor.v1",
     }
     if (JSON.stringify(payload, Object.keys(expected).sort()) !== JSON.stringify(expected, Object.keys(expected).sort())) {
       throw new Error("anchor payload mismatch")
@@ -168,7 +199,7 @@ export class KvstoreClient {
     try {
       const res = await this.createClient().getProtectedValueAnchor({ owner, key: `oci/tags/${name}` })
       const anchor = res.anchor as Anchor
-      await this.verifyAnchor(anchor)
+      await this.verifyAnchor(anchor, owner, `oci/tags/${name}`)
       const content = await this.getBlob(`sha256:${cidToDigestHex(anchor.cid)}`)
       if (!content) return { name, tags: [] }
       const tags = JSON.parse(new TextDecoder().decode(content))
@@ -178,11 +209,13 @@ export class KvstoreClient {
     }
   }
 
-  async putTagList(name: string, tags: string[], owner: string, userId?: string, externalRequestId?: string): Promise<void> {
+  async putTagList(name: string, tags: string[]): Promise<void> {
     const key = `oci/tags/${name}`
     const value = new TextEncoder().encode(JSON.stringify(tags))
-    const anchor = await this.signAnchor({ owner, key, cid: this.sha256ToCid(`sha256:${await digestOf(value)}`), revision: BigInt(Date.now()) })
-    await this.createClient(userId, externalRequestId).createProtectedValueAnchor({ anchor })
+    const digest = `sha256:${await digestOf(value)}`
+    await this.putBlob(digest, value)
+    const anchor = await this.signAnchor({ key, cid: this.sha256ToCid(digest), revision: BigInt(Date.now()) })
+    await this.createClient().createProtectedValueAnchor({ anchor })
   }
 }
 

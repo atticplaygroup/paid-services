@@ -62,7 +62,7 @@ func testDPoPRequest(
 	if err != nil {
 		t.Fatalf("verify proof: %v", err)
 	}
-	principal, err := utils.DigestToMultihash(res.JKTBytes)
+	principal, err := utils.PrincipalFromThumbprint(res.JKTBytes)
 	if err != nil {
 		t.Fatalf("principal: %v", err)
 	}

@@ -18,3 +18,7 @@
 {{- end -}}
 {{- toJson $domains -}}
 {{- end -}}
+
+{{- define "exchange.identitySecret" -}}
+{{- .Values.identitySecret | default (printf "%s-identity" (include "exchange.fullname" .)) -}}
+{{- end -}}

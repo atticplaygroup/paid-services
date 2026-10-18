@@ -6,7 +6,7 @@ build: build-go
 
 build-go:
 	go build -o $(BUILD_DIR)/kvstore ./infrastructure/cmd/kvstore
-	go build -o $(BUILD_DIR)/als ./infrastructure/cmd/als
+	go build -o $(BUILD_DIR)/deduction ./infrastructure/cmd/deduction
 	go build -o $(BUILD_DIR)/account ./infrastructure/cmd/account
 	go build -o $(BUILD_DIR)/authz-http ./infrastructure/cmd/authz-http
 	go build -o $(BUILD_DIR)/exchange ./infrastructure/cmd/exchange

@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/.kubeconfig
+**/charts/*.tgz
+infrastructure/bin
+AGENTS.md

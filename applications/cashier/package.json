@@ -13,7 +13,8 @@
     "@connectrpc/connect-node": "^2.2.0",
     "@connectrpc/connect-web": "^2.1.2",
     "@grpc/grpc-js": "^1.14.4",
-    "@mysten/sui": "^2.30.0",
+    "@mysten/sui": "2.30.0",
+    "@scure/bip39": "^2.4.0",
     "dpop": "^2.1.1",
     "hono": "^4.12.32",
     "multiformats": "^14.0.5"

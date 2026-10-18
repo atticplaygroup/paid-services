@@ -16,7 +16,7 @@ import {
   DepositOrCreateAccountRequestSchema,
 } from "./proto/gen/es/account/v1/account_pb.js"
 import {
-  BuyTokenRequestSchema,
+  BuyPointsRequestSchema,
   DepositRequestSchema,
   ExchangeService,
   GetChallengeRequestSchema,
@@ -30,6 +30,7 @@ import {
   GetAccessTokenResponseSchema,
   ProviderManifest,
   GetFundsResponseSchema,
+  GetChainBalanceResponseSchema,
   ProviderManifestSchema,
 } from "./proto/gen/es/cashier/v1/cashier_pb.js"
 
@@ -42,12 +43,16 @@ interface ManifestExchange {
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
+type SuiTransactionResult = { Transaction?: { digest: string }; FailedTransaction?: unknown }
+
 export type SuiClientLike = {
+  getBalance?(input: { owner: string; signal?: AbortSignal }): Promise<{ balance: { balance: string } }>
+  waitForTransaction?(input: { digest: string; timeout?: number }): Promise<SuiTransactionResult>
   signAndExecuteTransaction(input: {
     transaction: Transaction
     signer: Ed25519Keypair
     options?: { showEffects?: boolean }
-  }): Promise<{ digest: string }>
+  }): Promise<SuiTransactionResult>
 }
 
 export interface CashierDeps {
@@ -62,6 +67,7 @@ export class FaucetNotImplementedError extends Error {}
 export class Cashier implements CashierServiceImplementation {
   readonly #config: CashierConfig
   readonly #deps: Required<Pick<CashierDeps, "clock">> & CashierDeps
+  readonly #walletFunding = new Map<string, Promise<void>>()
   readonly #keypairs = new Map<string, Promise<dpop.KeyPair>>()
   readonly #accountClients = new Map<string, ReturnType<typeof createClient<typeof AccountService>>>()
   readonly #exchangeClients = new Map<string, ReturnType<typeof createClient<typeof ExchangeService>>>()
@@ -119,16 +125,18 @@ export class Cashier implements CashierServiceImplementation {
     }
   }
 
-  async #providerManifest(hostname: string) {
-    const scheme = this.#config.insecure ? "http" : "https"
-    const manifestUrl = `${scheme}://${hostname}/.well-known/paid_provider_manifest.json`
+  async #providerManifest(manifestOrigin: string) {
+    const { host, hostname } = new URL(manifestOrigin)
+    const overrides = this.#config.manifestOriginOverrides
+    const origin = overrides?.[manifestOrigin] ?? overrides?.[host] ?? overrides?.[hostname] ?? manifestOrigin
+    const manifestUrl = `${origin.replace(/\/$/, "")}/.well-known/paid_provider_manifest.json`
     const response = await (this.#deps.fetch?.call(globalThis, manifestUrl) ?? globalThis.fetch(manifestUrl))
     if (!response.ok) throw new Error(`provider manifest fetch failed: ${response.status}`)
     return fromJson(ProviderManifestSchema, await response.json())
   }
 
-  async #verifyManifest(hostname: string) {
-    const raw = await this.#providerManifest(hostname)
+  async #verifyManifest(manifestOrigin: string) {
+    const raw = await this.#providerManifest(manifestOrigin)
     const [header, payload, signature] = raw.signature.split(".")
     if (!header || !payload || !signature) throw new Error("invalid provider manifest signature")
     const unsigned = fromJson(ProviderManifestSchema, { version: raw.version, id: raw.id, exchanges: raw.exchanges.map((exchange) => ({ id: exchange.id, hosts: exchange.hosts, payment_coin: this.enumName(PaymentCoinSchema, exchange.paymentCoin), payment_environment: this.enumName(PaymentEnvironmentSchema, exchange.paymentEnvironment) })) })
@@ -156,23 +164,21 @@ export class Cashier implements CashierServiceImplementation {
       client = createClient(AccountService, createConnectTransport({
         baseUrl: this.#serviceOrigin(hostname),
         useBinaryFormat: true,
-        maxAttempts: 5,
-        fetch: this.#deps.fetch ? ((input, init) => this.#deps.fetch!(input as RequestInfo | URL, init)) : undefined,
+        fetch: this.#deps.fetch ? Object.assign((input: RequestInfo | URL, init?: RequestInit) => this.#deps.fetch!(input, init), { preconnect: globalThis.fetch.preconnect }) : undefined,
       }))
       this.#accountClients.set(key, client)
     }
     return client
   }
 
-  #exchangeClient(hostname: string) {
-    const key = `${ExchangeService.typeName}:${hostname}`
+  #exchangeClient(exchangeOrigin: string) {
+    const key = `${ExchangeService.typeName}:${exchangeOrigin}`
     let client = this.#exchangeClients.get(key)
     if (!client) {
       client = createClient(ExchangeService, createConnectTransport({
-        baseUrl: this.#exchangeServiceOrigin(hostname),
+        baseUrl: exchangeOrigin,
         useBinaryFormat: true,
-        maxAttempts: 5,
-        fetch: this.#deps.fetch ? ((input, init) => this.#deps.fetch!(input as RequestInfo | URL, init)) : undefined,
+        fetch: this.#deps.fetch ? Object.assign((input: RequestInfo | URL, init?: RequestInit) => this.#deps.fetch!(input, init), { preconnect: globalThis.fetch.preconnect }) : undefined,
       }))
       this.#exchangeClients.set(key, client)
     }
@@ -180,21 +186,11 @@ export class Cashier implements CashierServiceImplementation {
   }
 
   #serviceOrigin(hostname: string): string {
-    const scheme = this.#config.insecure ? "http" : "https"
     const overrides = this.#config.accountOriginOverrides ?? {}
     const fallbackHostname = hostname.includes(":") ? new URL(`http://${hostname}`).hostname : hostname
     const override = overrides[hostname] ?? overrides[fallbackHostname]
     if (typeof override === "string") return override
-    return `${scheme}://account.${hostname}`
-  }
-
-  #exchangeServiceOrigin(hostname: string): string {
-    const scheme = this.#config.insecure ? "http" : "https"
-    const overrides = this.#config.exchangeOriginOverrides ?? {}
-    const fallbackHostname = hostname.includes(":") ? new URL(`http://${hostname}`).hostname : hostname
-    const override = overrides[hostname] ?? overrides[fallbackHostname]
-    if (typeof override === "string") return override
-    return `${scheme}://exchange.${hostname}`
+    return `https://account.${hostname}`
   }
 
   #keyHostname(hostname: string): string {
@@ -204,7 +200,7 @@ export class Cashier implements CashierServiceImplementation {
   async getAccessToken(request: { htu: string; htm: string; preferredPaymentCoin: PaymentCoin; preferredPaymentEnvironment: PaymentEnvironment }, principal: string) {
     const account = this.#account(principal)
     const htu = new URL(request.htu)
-    const manifestHostname = htu.host
+    const manifestOrigin = htu.origin
     const hostname = this.#keyHostname(htu.host)
     const keypair = await this.#keypair(account, hostname)
     const providerBalanceHtu = `${this.#serviceOrigin(hostname)}/account.v1.AccountService/GetBalance`
@@ -212,17 +208,18 @@ export class Cashier implements CashierServiceImplementation {
       const proof = await dpop.generateProof(keypair, normalizeHtu(request.htu), request.htm)
       return create(GetAccessTokenResponseSchema, { accessToken: proof })
     }
-    const verified = await this.#verifyManifest(manifestHostname)
+    const verified = await this.#verifyManifest(manifestOrigin)
     const exchange = this.#chooseExchange(verified.exchanges, request.preferredPaymentCoin, request.preferredPaymentEnvironment, account)
     const payment = exchange.payment
-    const exchangeHostname = exchange.hostname
+    const exchangeOrigin = exchange.origin
+    const exchangeHostname = new URL(exchangeOrigin).hostname
     const exchangeAccount = { masterSecret: account.masterSecret }
     const exchangeBalanceHtu = `${this.#serviceOrigin(exchangeHostname)}/account.v1.AccountService/GetBalance`
     if (await this.#accountBalance(exchangeHostname, exchangeAccount, exchangeBalanceHtu) > 0n) {
-      await this.#buyAndDeposit(verified.manifest.id, hostname, exchangeHostname, exchangeAccount, payment)
+      await this.#buyAndDeposit(verified.manifest.id, hostname, exchangeOrigin, exchangeAccount, payment)
     } else {
-      await this.#depositToExchange(exchangeHostname, exchangeAccount, payment)
-      await this.#buyAndDeposit(verified.manifest.id, hostname, exchangeHostname, exchangeAccount, payment)
+      await this.#depositToExchange(exchangeOrigin, exchangeAccount, payment)
+      await this.#buyAndDeposit(verified.manifest.id, hostname, exchangeOrigin, exchangeAccount, payment)
     }
     const proof = await dpop.generateProof(keypair, normalizeHtu(request.htu), request.htm)
     return create(GetAccessTokenResponseSchema, { accessToken: proof })
@@ -230,23 +227,28 @@ export class Cashier implements CashierServiceImplementation {
 
   #chooseExchange(exchanges: ProviderExchange[], preferredCoin: PaymentCoin, preferredEnvironment: PaymentEnvironment, account: { payments: PaymentConfig[] }) {
     const candidates = exchanges.flatMap((exchange) => {
-      const hostname = exchange.hosts.map((host) => { try { return new URL(host).host } catch { return undefined } }).find(Boolean)
-      if (!hostname) return []
+      const origin = exchange.hosts.map((host) => {
+        try {
+          const url = new URL(host)
+          return ["http:", "https:"].includes(url.protocol) ? url.origin : undefined
+        } catch { return undefined }
+      }).find(Boolean)
+      if (!origin) return []
       return account.payments.flatMap((payment) => {
         if (payment.paymentCoin !== exchange.paymentCoin || payment.paymentEnvironment !== exchange.paymentEnvironment) return []
         const exact = payment.paymentCoin === preferredCoin && payment.paymentEnvironment === preferredEnvironment
-        return [{ exchange, hostname, payment, exact }]
+        return [{ exchange, origin, payment, exact }]
       })
     })
     const selected = candidates.find((entry) => entry.exact) ?? candidates[0]
     if (!selected) throw new Error("no exchange supported by cashier")
-    return { hostname: selected.hostname, payment: selected.payment, exchange: selected.exchange }
+    return { origin: selected.origin, payment: selected.payment, exchange: selected.exchange }
   }
 
 
-  async #depositToExchange(hostname: string, account: { masterSecret: Uint8Array }, payment: PaymentConfig) {
-    hostname = this.#keyHostname(hostname)
-    const client = this.#exchangeClient(hostname)
+  async #depositToExchange(exchangeOrigin: string, account: { masterSecret: Uint8Array }, payment: PaymentConfig) {
+    const hostname = new URL(exchangeOrigin).hostname
+    const client = this.#exchangeClient(exchangeOrigin)
     const methods = await client.listPaymentMethods(create(ListPaymentMethodsRequestSchema, {}), {
       headers: { "x-request-id": crypto.randomUUID(), "x-user-id": await this.#principal(await this.#keypair(account, hostname)) },
     })
@@ -254,6 +256,9 @@ export class Cashier implements CashierServiceImplementation {
     if (!method?.address) throw new Error("exchange has no matching payment method")
     const keypair = Ed25519Keypair.deriveKeypair(payment.mnemonic)
     const suiClient = this.#deps.suiClientFactory?.(payment) ?? new SuiGrpcClient({ baseUrl: payment.suiRpcUrl ?? this.suiUrl(payment.paymentEnvironment), network: this.suiNetwork(payment.paymentEnvironment) })
+    if (payment.autoFaucet && payment.paymentEnvironment !== PaymentEnvironment.MAINNET) {
+      await this.#ensureWalletFunds(payment, keypair, suiClient)
+    }
     const transaction = new Transaction()
     transaction.setSenderIfNotSet(keypair.toSuiAddress())
     const [coin] = transaction.splitCoins(transaction.gas, [this.#config.defaultChainDepositAmount])
@@ -263,30 +268,10 @@ export class Cashier implements CashierServiceImplementation {
       signer: keypair,
       options: { showEffects: true },
     })
-    const requestBody = JSON.stringify({
-      query: `query { transaction(digest: "${result.Transaction.digest}") { effects { status } } }`,
-    })
-    let succeeded = false
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const transactionResponse = await (this.#deps.fetch?.call(globalThis, "https://graphql.devnet.sui.io/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: requestBody,
-      }) ?? globalThis.fetch("https://graphql.devnet.sui.io/graphql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: requestBody,
-      }))
-      if (!transactionResponse.ok) throw new Error(`SUI transaction status check failed: ${transactionResponse.status}`)
-      const transactionStatus = await transactionResponse.json() as { data?: { transaction?: { effects?: { status?: string } } } }
-      console.log("sui transaction status check", transactionStatus)
-      if (transactionStatus.data?.transaction?.effects?.status === "SUCCESS") {
-        succeeded = true
-        break
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-    }
-    if (!succeeded) throw new Error("SUI transaction did not succeed")
+    if (!result.Transaction) throw new Error("SUI transaction failed")
+    if (!suiClient.waitForTransaction) throw new Error("SUI client cannot confirm transactions")
+    const confirmed = await suiClient.waitForTransaction({ digest: result.Transaction.digest, timeout: 20_000 })
+    if (!confirmed.Transaction) throw new Error("SUI transaction did not succeed")
     const challenge = await client.getChallenge(create(GetChallengeRequestSchema, { address: keypair.toSuiAddress() }), {
       headers: { "x-request-id": crypto.randomUUID(), "x-user-id": await this.#principal(await this.#keypair(account, hostname)) },
     })
@@ -305,18 +290,52 @@ export class Cashier implements CashierServiceImplementation {
     })
   }
 
-  async #buyAndDeposit(providerId: string, providerHostname: string, exchangeHostname: string, account: { masterSecret: Uint8Array }, payment: PaymentConfig) {
+  async #ensureWalletFunds(payment: PaymentConfig, keypair: Ed25519Keypair, client: SuiClientLike) {
+    if (!client.getBalance) throw new Error("SUI client cannot check wallet balance")
+    const owner = keypair.toSuiAddress()
+    const walletKey = `${payment.paymentEnvironment}:${payment.suiRpcUrl ?? ""}:${owner}`
+    const pending = this.#walletFunding.get(walletKey)
+    if (pending) return pending
+    const funding = (async () => {
+      // Leave enough SUI for gas as well as the configured exchange deposit.
+      const required = this.#config.defaultChainDepositAmount + 10_000_000n
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 30_000)
+      const sufficient = async () => BigInt((await this.#inspectChainWallet(payment, client, controller.signal)).balance) >= required
+      try {
+        if (await sufficient()) return
+        const request = this.#deps.faucetRequest?.(payment, owner) ?? requestSuiFromFaucetV2({
+          host: this.suiFaucetUrl(payment), recipient: owner,
+        })
+        await Promise.race([
+          request,
+          new Promise<never>((_, reject) => controller.signal.addEventListener("abort", () => reject(new Error("Wallet funding timed out; retry shortly")), { once: true })),
+        ])
+        while (!controller.signal.aborted) {
+          if (await sufficient()) return
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        }
+        throw new Error("Wallet funding timed out; retry shortly")
+      } finally {
+        clearTimeout(timeout)
+      }
+    })()
+    this.#walletFunding.set(walletKey, funding)
+    try { await funding } finally { this.#walletFunding.delete(walletKey) }
+  }
+
+  async #buyAndDeposit(providerId: string, providerHostname: string, exchangeOrigin: string, account: { masterSecret: Uint8Array }, payment: PaymentConfig) {
     providerHostname = this.#keyHostname(providerHostname)
-    exchangeHostname = this.#keyHostname(exchangeHostname)
-    const exchangeClient = this.#exchangeClient(exchangeHostname)
+    const exchangeHostname = new URL(exchangeOrigin).hostname
+    const exchangeClient = this.#exchangeClient(exchangeOrigin)
     const keypair = await this.#keypair(account, exchangeHostname)
     const exchangeBalanceHtu = `${this.#serviceOrigin(exchangeHostname)}/account.v1.AccountService/GetBalance`
-    const exchangeHtu = normalizeHtu(`${this.#exchangeServiceOrigin(exchangeHostname)}/exchange.v1.ExchangeService/BuyToken`)
+    const exchangeHtu = normalizeHtu(`${exchangeOrigin}/exchange.v1.ExchangeService/BuyPoints`)
     const proof = await dpop.generateProof(keypair, exchangeHtu, "POST")
     const exchangeBalance = await this.#accountBalance(exchangeHostname, account, exchangeBalanceHtu)
     const amount = exchangeBalance < this.#config.defaultProviderDepositAmount ? exchangeBalance : this.#config.defaultProviderDepositAmount
     if (amount <= 0n) throw new Error("exchange balance is not positive")
-    const tokenResponse = await exchangeClient.buyToken(create(BuyTokenRequestSchema, {
+    const tokenResponse = await exchangeClient.buyPoints(create(BuyPointsRequestSchema, {
       audience: providerId,
       amount,
     }), {
@@ -375,6 +394,26 @@ export class Cashier implements CashierServiceImplementation {
     }
   }
 
+  /** Inspect a configured SUI wallet. Balance is a decimal string in MIST. */
+  async #inspectChainWallet(payment: PaymentConfig, client?: SuiClientLike, signal?: AbortSignal) {
+    if (payment.paymentCoin !== PaymentCoin.SUI) throw new Error("unsupported payment coin")
+    const address = Ed25519Keypair.deriveKeypair(payment.mnemonic).toSuiAddress()
+    client ??= this.#deps.suiClientFactory?.(payment) ?? new SuiGrpcClient({
+      baseUrl: payment.suiRpcUrl ?? this.suiUrl(payment.paymentEnvironment),
+      network: this.suiNetwork(payment.paymentEnvironment),
+    })
+    if (!client.getBalance) throw new Error("SUI client cannot check wallet balance")
+    const { balance } = await client.getBalance({ owner: address, signal })
+    return create(GetChainBalanceResponseSchema, { address, balance: balance.balance })
+  }
+
+  async getChainBalance(request: GetFundsRequest, principal: string) {
+    const account = this.#account(principal)
+    const payment = this.#payment(account, request.preferredPaymentCoin, request.preferredPaymentEnvironment)
+    if (!payment) throw new Error("no matching payment configuration")
+    return this.#inspectChainWallet(payment)
+  }
+
   async getFunds(request: { preferredPaymentCoin: PaymentCoin; preferredPaymentEnvironment: PaymentEnvironment }, principal: string) {
     const account = this.#account(principal)
     const payment = this.#payment(account, request.preferredPaymentCoin, request.preferredPaymentEnvironment)
@@ -395,5 +434,6 @@ type GetFundsRequest = { preferredPaymentCoin: PaymentCoin; preferredPaymentEnvi
 
 type CashierServiceImplementation = {
   getAccessToken(request: GetAccessTokenRequest, principal: string): ReturnType<Cashier["getAccessToken"]>
+  getChainBalance(request: GetFundsRequest, principal: string): ReturnType<Cashier["getChainBalance"]>
   getFunds(request: GetFundsRequest, principal: string): ReturnType<Cashier["getFunds"]>
 }

@@ -15,7 +15,7 @@ import (
 	migrate "github.com/rubenv/sql-migrate"
 )
 
-func setupPostgresStore(t *testing.T) *balance.PostgresStore {
+func setupPostgresStore(t *testing.T) (*balance.PostgresStore, *pgxpool.Pool) {
 	t.Helper()
 	databaseURL := testpostgres.StartPostgres(t)
 	pool, err := pgxpool.New(context.Background(), databaseURL)
@@ -51,12 +51,12 @@ func setupPostgresStore(t *testing.T) *balance.PostgresStore {
 		t.Fatalf("connect database: %v", err)
 	}
 	t.Cleanup(store.Close)
-	return store
+	return store, pool
 }
 
 func TestPostgresStoreWithExchangeAccounts(t *testing.T) {
 	ctx := context.Background()
-	store := setupPostgresStore(t)
+	store, pool := setupPostgresStore(t)
 
 	principal := "balance-store-test-principal"
 	created, err := store.Increment(ctx, principal, 100)
@@ -65,6 +65,26 @@ func TestPostgresStoreWithExchangeAccounts(t *testing.T) {
 	}
 	if created != 100 {
 		t.Fatalf("created balance=%d want 100", created)
+	}
+	var storedTTLSeconds float64
+	if err := pool.QueryRow(ctx,
+		"SELECT EXTRACT(EPOCH FROM expire_time - create_time) FROM accounts WHERE principal = $1",
+		principal).Scan(&storedTTLSeconds); err != nil {
+		t.Fatalf("query account lifetime: %v", err)
+	}
+	if storedTTLSeconds != balance.DefaultTTL.Seconds() {
+		t.Fatalf("stored account lifetime=%g seconds want %g", storedTTLSeconds, balance.DefaultTTL.Seconds())
+	}
+	if err := store.RefreshTTL(ctx, principal, 24*time.Hour); err != nil {
+		t.Fatalf("RefreshTTL: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		"SELECT EXTRACT(EPOCH FROM expire_time - CURRENT_TIMESTAMP) FROM accounts WHERE principal = $1",
+		principal).Scan(&storedTTLSeconds); err != nil {
+		t.Fatalf("query refreshed lifetime: %v", err)
+	}
+	if storedTTLSeconds < 24*time.Hour.Seconds()-1 || storedTTLSeconds > 24*time.Hour.Seconds() {
+		t.Fatalf("refreshed account lifetime=%g seconds want approximately 86400", storedTTLSeconds)
 	}
 	deducted, err := store.Deduct(ctx, principal, 25)
 	if err != nil {

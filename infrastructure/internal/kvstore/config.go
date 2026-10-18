@@ -24,6 +24,7 @@ type Config struct {
 	MinioBucket    string `mapstructure:"MINIO_BUCKET"`
 	MinioAccessKey string `mapstructure:"MINIO_ACCESS_KEY"`
 	MinioSecretKey string `mapstructure:"MINIO_SECRET_KEY"`
+	S3Secure       bool   `mapstructure:"S3_SECURE"`
 }
 
 func LoadConfig(name string, path string) (config Config) {
@@ -37,7 +38,7 @@ func LoadConfig(name string, path string) (config Config) {
 	viper.SetDefault("REQUEST_ID_HEADER_NAME", "x-request-id")
 	viper.SetDefault("EXTERNAL_REQUEST_ID_HEADER_NAME", "x-external-request-id")
 	for _, k := range []string{
-		"MINIO_ENDPOINT", "MINIO_BUCKET", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY",
+		"MINIO_ENDPOINT", "MINIO_BUCKET", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "S3_SECURE",
 		"REDIS_HOST", "REDIS_PORT", "GRPC_PORT", "BILLING_SERVER_ADDRESS",
 	} {
 		_ = viper.BindEnv(k)

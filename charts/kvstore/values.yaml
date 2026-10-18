@@ -1,33 +1,60 @@
-# TODO(prod): pin digests; no mutable tags in examples
+# Supply the application image repository and a deployment-owned version.
 image:
-  repository: oci.example.com/infrastructure
-  tag: dev
+  repository: ghcr.io/atticplaygroup/paid-services/infrastructure
+  # Defaults to Chart.appVersion; CI supplies a commit-specific tag.
+  tag: ""
   pullPolicy: IfNotPresent
 envoyImage:
   repository: envoyproxy/envoy
   tag: v1.38.3
   pullPolicy: IfNotPresent
 fullnameOverride: ""
-minio:
-  enabled: true
+s3:
+  # External S3 is the production default; embedded storage is opt-in.
+  enabled: false
   image:
-    repository: minio/minio
-    tag: latest
+    repository: chrislusf/seaweedfs
+    tag: '4.48'
+    digest: sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     pullPolicy: IfNotPresent
-  endpoint: "" # kvstore-minio:9000
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  endpoint: "" # defaults to <fullname>-s3:9000 when enabled
+  secure: true # use false only for an explicitly configured HTTP endpoint
   bucket: applications
-  rootUser: minio
-  rootPassword: minio12345
+  existingSecret: "" # keys: accessKey, secretKey; s3.json if embedded S3 is enabled
+  accessKey: ""
+  secretKey: ""
+  retentionRules:
+    enabled: true
+    schedule: "0 * * * *"
+    image:
+      repository: ghcr.io/atticplaygroup/paid-services/s3-retention-rules
+      tag: ""
+      pullPolicy: IfNotPresent
+    region: us-east-1
+    # Inclusive range; matches the application's ten-day retention units.
+    minDays: 10
+    maxDays: 3650
+    stepDays: 10
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
 redisAddress: "" # kvstore-redis:6379
 env:
-  validAudience: "" # bafk9pipdnq2i2cm3okcnonbmclhzt4fh40mk7oenuqxjj79rietgh8arse
+  tlsSecretName: ""
+  validAudience: "" # bahi5mayseakgxo3yvoqqco7lttd7c7mzxvos4f45ffo4jv27fgctrrgc2rv3s
   validCoinType: 1
   validCoinEnvironment: 4
   faucetMode: false
   accountDomains: []
   # - account.test-kvstore.com
   # - account.envoy
-  alsLogName: kvstore_als
+  deductionLogName: kvstore_deduction
   providerManifest: "{}"
 meter:
   fullnameOverride: kvstore-meter
@@ -37,11 +64,11 @@ meter:
     host: "" # host: kvstore-redis
     address: "" # address: kvstore-redis:6379
   account:
-    validAudience: "" # bafk9pipdnq2i2cm3okcnonbmclhzt4fh40mk7oenuqxjj79rietgh8arse
+    validAudience: "" # bahi5mayseakgxo3yvoqqco7lttd7c7mzxvos4f45ffo4jv27fgctrrgc2rv3s
     validCoinType: 1
     validCoinEnvironment: 4
     faucetMode: false
-  als:
+  deduction:
     feedbackEnabled: false
     feedbackTTLSeconds: 10
     outproxyAddress: ""

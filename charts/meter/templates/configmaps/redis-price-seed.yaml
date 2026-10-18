@@ -9,10 +9,10 @@ data:
     #!/bin/sh
     set -eu
     {{- $redisHost := default (include "meter.fullname" . | printf "%s-redis") .Values.redis.host }}
-    until redis-cli -h {{ $redisHost }} ping; do sleep 1; done
+    until valkey-cli -h {{ $redisHost }} ping; do sleep 1; done
     {{- with .Values.priceSeed }}
     {{- range .entries }}
-    redis-cli -h {{ $redisHost }} HSET {{ .key }}{{ range $field, $value := .fields }} {{ $field }} {{ $value }}{{ end }}
+    valkey-cli -h {{ $redisHost }} HSET {{ .key }}{{ range $field, $value := .fields }} {{ $field }} {{ $value }}{{ end }}
     {{- end }}
     {{- end }}
 {{- end }}

@@ -1,18 +1,32 @@
 namespace: replica-ns
 image:
-  repository: paid-feature4-mysql
-  tag: dev
+  repository: ghcr.io/atticplaygroup/paid-services/mysql-tools
+  # Defaults to Chart.appVersion; CI supplies a commit-specific tag.
+  tag: ""
   pullPolicy: IfNotPresent
+persistence:
+  size: 1Gi
 mysql:
   rootPassword: root
-  readOnly: true
 importer:
+  storageSize: 5Gi # pending delta downloads and queue metadata
+  storageMode: s3
   schedule: "*/5 * * * *"
   applicationOwner: ""
   application: medium
   ociAddress: "" # envoy-s:8080
   stagingNamespace: staging
-  baselineRepo: baseline_app
-  baselineTag: latest
-  deltaRepo: binlog_app
-  deltaTag: ""
+  manifestRepo: app-manifests
+
+s3:
+  bucket: mysql-replica
+  prefix: mysql
+  region: us-east-1
+  endpoint: "" # Defaults to the chart's SeaweedFS service when enabled.
+  credentialsSecret: "" # External S3: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
+  seaweedfs:
+    enabled: true
+    image: chrislusf/seaweedfs:3.97
+    storageSize: 20Gi
+    accessKey: replica
+    secretKey: change-me

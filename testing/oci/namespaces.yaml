@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: storage-provider-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oci-provider-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pusher-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: puller-ns

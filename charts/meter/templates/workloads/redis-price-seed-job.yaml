@@ -13,7 +13,7 @@ spec:
     spec:
       containers:
         - name: price-seed
-          image: redis:8-alpine
+          image: valkey/valkey:8-alpine
           command: ["/bin/sh", "/seed/seed.sh"]
           volumeMounts:
             - { name: seed, mountPath: /seed }

@@ -23,7 +23,7 @@ func (s *Server) CreateWithdraw(
 ) (*connect.Response[pb.CreateWithdrawResponse], error) {
 	req := connectReq.Msg
 	// TODO: change priority fee mechanism to second price
-	// TODO: meter usage and deduct in ALS
+	// TODO: meter usage and deduct in Deduction
 	chainAddressBytes, err := hex.DecodeString(req.GetWithdrawal().GetAddressTo()[2:])
 	if err != nil || len(chainAddressBytes) != 32 {
 		return nil, status.Errorf(
@@ -189,7 +189,9 @@ func (s *Server) BatchMarkWithdraws(
 			err,
 		)
 	}
-	successChan := make(chan int64)
+	// Each worker sends at most one ID. Buffer all results so workers can
+	// finish before we wait for them and collect the successful batches.
+	successChan := make(chan int64, len(processingWithdrawals))
 	var wg sync.WaitGroup
 	for _, withdraw := range processingWithdrawals {
 		transactionDigestHex := withdraw.TransactionDigest

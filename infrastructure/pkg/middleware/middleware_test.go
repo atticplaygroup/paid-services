@@ -36,6 +36,37 @@ func TestAuthInterceptorRejectsMissingHeaders(t *testing.T) {
 	testAuthInterceptor(t, map[string]string{"x-user-id": "alice"})
 }
 
+func TestAuthInterceptorPreservesDistinctRequestIDs(t *testing.T) {
+	procedure := "/exchange.v1.ExchangeService/Ping"
+	var session *Session
+	unary := connect.NewUnaryHandler(procedure, func(ctx context.Context, req *connect.Request[pb.PingRequest]) (*connect.Response[pb.PingResponse], error) {
+		var err error
+		session, err = SessionFromContext(ctx)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeUnauthenticated, err)
+		}
+		return connect.NewResponse(&pb.PingResponse{Pong: "pong"}), nil
+	}, connect.WithHandlerOptions(connect.WithInterceptors(NewAuthInterceptor(&AuthConfig{
+		UserIdHeaderName:            "x-user-id",
+		RequestIdHeaderName:         "x-request-id",
+		ExternalRequestIdHeaderName: "x-external-request-id",
+	}))))
+	request := connect.NewRequest(&pb.PingRequest{})
+	request.Header().Set("x-user-id", "alice")
+	request.Header().Set("x-request-id", "billing-request")
+	request.Header().Set("x-external-request-id", "external-request")
+	server := httptest.NewServer(http.HandlerFunc(unary.ServeHTTP))
+	t.Cleanup(server.Close)
+	client := exchangeconnect.NewExchangeServiceClient(server.Client(), server.URL)
+	_, err := client.Ping(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+	if session.RequestId != "billing-request" || session.ExternalRequestId != "external-request" {
+		t.Fatalf("request ID=%q, external ID=%q; want billing-request and external-request", session.RequestId, session.ExternalRequestId)
+	}
+}
+
 func testAuthInterceptor(t *testing.T, headers map[string]string) {
 	t.Helper()
 	procedure := "/exchange.v1.ExchangeService/Ping"

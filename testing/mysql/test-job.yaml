@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mysql-e2e
+  namespace: proposer-ns
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mysql-e2e
+  namespace: proposer-ns
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [mysql-proposer-publisher]
+    verbs: [get, patch]
+  - apiGroups: [""]
+    resources: [pods]
+    resourceNames: [mysql-proposer-0]
+    verbs: [get, patch]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    resourceNames: [mysql-proposer-0]
+    verbs: [create, get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mysql-e2e
+  namespace: proposer-ns
+subjects:
+  - kind: ServiceAccount
+    name: mysql-e2e
+    namespace: proposer-ns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mysql-e2e
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mysql-e2e
+  namespace: replica-ns
+rules:
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    resourceNames: [mysql-replica-importer, mysql-replica-sync]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mysql-e2e
+  namespace: replica-ns
+subjects:
+  - kind: ServiceAccount
+    name: mysql-e2e
+    namespace: proposer-ns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: mysql-e2e
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2e-mysql
+  namespace: proposer-ns
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      serviceAccountName: mysql-e2e
+      restartPolicy: Never
+      containers:
+        - name: tests
+          image: local/mysql-test-client:dev
+          imagePullPolicy: IfNotPresent
+          command: [bash, -c, "mkdir -p /var/lib/proposer-binlogs/publication-tests; exec bun test --bail mysql/e2e-mysql.test.ts"]
+          env:
+            - name: TMPDIR
+              value: /var/lib/proposer-binlogs/publication-tests
+            - name: MYSQL_BINLOG_DIR
+              value: /var/lib/proposer-binlogs
+            - name: NODE_EXTRA_CA_CERTS
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          volumeMounts:
+            - name: proposer-data
+              mountPath: /var/lib/proposer-binlogs
+      volumes:
+        - name: proposer-data
+          persistentVolumeClaim:
+            claimName: data-mysql-proposer-0
