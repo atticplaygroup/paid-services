@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,9 +20,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func TestBuyTokenRequiresSession(t *testing.T) {
+func TestBuyPointsRequiresSession(t *testing.T) {
 	server := &Server{}
-	_, err := server.BuyToken(context.Background(), connect.NewRequest(&pb.BuyTokenRequest{}))
+	_, err := server.BuyPoints(context.Background(), connect.NewRequest(&pb.BuyPointsRequest{}))
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("status=%v want Unauthenticated", status.Code(err))
 	}
@@ -34,6 +36,7 @@ func TestGenerateJwtClaims(t *testing.T) {
 	server := &Server{config: &exchange.Config{
 		TokenSigningPrivateKey: ed25519.NewKeyFromSeed(seed),
 		TokenSigningKeyId:      "test-key",
+		TokenIssuer:            "https://exchange.example",
 		TokenTtl:               time.Minute,
 		TokenCoinType:          1,
 		TokenCoinEnvironment:   4,
@@ -54,11 +57,10 @@ func TestGenerateJwtClaims(t *testing.T) {
 		t.Fatal("invalid claims")
 	}
 	if claims.Quantity != 42 ||
-		claims.Usage != pb.JwtUsage_JWT_USAGE_CREATE_SESSION ||
 		claims.CoinType != 1 ||
 		claims.CoinEnvironment != 4 ||
 		claims.Audience[0] != "bafk-test-provider" ||
-		claims.Issuer != "test-key" {
+		claims.Issuer != "https://exchange.example" {
 		t.Fatalf("unexpected claims: %+v", claims.RegisteredClaims)
 	}
 }
@@ -68,6 +70,7 @@ func TestGeneratedJwtMatchesHandleJWKS(t *testing.T) {
 	server := &Server{config: &exchange.Config{
 		TokenSigningPrivateKey: ed25519.NewKeyFromSeed(seed),
 		TokenSigningKeyId:      "test-key",
+		TokenIssuer:            "https://exchange.example",
 		TokenTtl:               time.Minute,
 		TokenCoinType:          1,
 		TokenCoinEnvironment:   4,
@@ -92,4 +95,38 @@ func TestGeneratedJwtMatchesHandleJWKS(t *testing.T) {
 		t.Fatalf("invalid parsed claims: valid=%v quantity=%d", parsed.Valid, claims.Quantity)
 	}
 	_ = jwkset.NewMemoryStorage
+}
+
+func TestJWKSIncludesRetiredKeyForRotation(t *testing.T) {
+	seed := make([]byte, ed25519.SeedSize)
+	retired := make([]byte, ed25519.PublicKeySize)
+	for i := range retired {
+		retired[i] = byte(i)
+	}
+	retiredJSON, err := json.Marshal([]map[string]string{{
+		"kid": "retired-key",
+		"x":   base64.RawURLEncoding.EncodeToString(retired),
+	}})
+	if err != nil {
+		t.Fatalf("marshal retired key: %v", err)
+	}
+	server := &Server{config: &exchange.Config{
+		TokenSigningPrivateKey: ed25519.NewKeyFromSeed(seed),
+		TokenSigningKeyId:      "active-key",
+		TokenRetiredPublicKeys: string(retiredJSON),
+	}}
+	recorder := httptest.NewRecorder()
+	server.HandleJWKS(recorder, httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var document struct {
+		Keys []publicJWK `json:"keys"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &document); err != nil {
+		t.Fatalf("decode JWKS: %v", err)
+	}
+	if len(document.Keys) != 2 || document.Keys[0].Kid != "active-key" || document.Keys[1].Kid != "retired-key" {
+		t.Fatalf("unexpected JWKS keys: %+v", document.Keys)
+	}
 }

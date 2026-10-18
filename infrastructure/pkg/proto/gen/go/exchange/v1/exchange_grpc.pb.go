@@ -27,7 +27,7 @@ const (
 	ExchangeService_BatchMarkWithdraws_FullMethodName    = "/exchange.v1.ExchangeService/BatchMarkWithdraws"
 	ExchangeService_Ping_FullMethodName                  = "/exchange.v1.ExchangeService/Ping"
 	ExchangeService_ListPaymentMethods_FullMethodName    = "/exchange.v1.ExchangeService/ListPaymentMethods"
-	ExchangeService_BuyToken_FullMethodName              = "/exchange.v1.ExchangeService/BuyToken"
+	ExchangeService_BuyPoints_FullMethodName             = "/exchange.v1.ExchangeService/BuyPoints"
 )
 
 // ExchangeServiceClient is the client API for ExchangeService service.
@@ -42,7 +42,7 @@ type ExchangeServiceClient interface {
 	BatchMarkWithdraws(ctx context.Context, in *BatchMarkWithdrawsRequest, opts ...grpc.CallOption) (*BatchMarkWithdrawsResponse, error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 	ListPaymentMethods(ctx context.Context, in *ListPaymentMethodsRequest, opts ...grpc.CallOption) (*ListPaymentMethodsResponse, error)
-	BuyToken(ctx context.Context, in *BuyTokenRequest, opts ...grpc.CallOption) (*BuyTokenResponse, error)
+	BuyPoints(ctx context.Context, in *BuyPointsRequest, opts ...grpc.CallOption) (*BuyPointsResponse, error)
 }
 
 type exchangeServiceClient struct {
@@ -133,10 +133,10 @@ func (c *exchangeServiceClient) ListPaymentMethods(ctx context.Context, in *List
 	return out, nil
 }
 
-func (c *exchangeServiceClient) BuyToken(ctx context.Context, in *BuyTokenRequest, opts ...grpc.CallOption) (*BuyTokenResponse, error) {
+func (c *exchangeServiceClient) BuyPoints(ctx context.Context, in *BuyPointsRequest, opts ...grpc.CallOption) (*BuyPointsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(BuyTokenResponse)
-	err := c.cc.Invoke(ctx, ExchangeService_BuyToken_FullMethodName, in, out, cOpts...)
+	out := new(BuyPointsResponse)
+	err := c.cc.Invoke(ctx, ExchangeService_BuyPoints_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ type ExchangeServiceServer interface {
 	BatchMarkWithdraws(context.Context, *BatchMarkWithdrawsRequest) (*BatchMarkWithdrawsResponse, error)
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	ListPaymentMethods(context.Context, *ListPaymentMethodsRequest) (*ListPaymentMethodsResponse, error)
-	BuyToken(context.Context, *BuyTokenRequest) (*BuyTokenResponse, error)
+	BuyPoints(context.Context, *BuyPointsRequest) (*BuyPointsResponse, error)
 	mustEmbedUnimplementedExchangeServiceServer()
 }
 
@@ -190,8 +190,8 @@ func (UnimplementedExchangeServiceServer) Ping(context.Context, *PingRequest) (*
 func (UnimplementedExchangeServiceServer) ListPaymentMethods(context.Context, *ListPaymentMethodsRequest) (*ListPaymentMethodsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPaymentMethods not implemented")
 }
-func (UnimplementedExchangeServiceServer) BuyToken(context.Context, *BuyTokenRequest) (*BuyTokenResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method BuyToken not implemented")
+func (UnimplementedExchangeServiceServer) BuyPoints(context.Context, *BuyPointsRequest) (*BuyPointsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BuyPoints not implemented")
 }
 func (UnimplementedExchangeServiceServer) mustEmbedUnimplementedExchangeServiceServer() {}
 func (UnimplementedExchangeServiceServer) testEmbeddedByValue()                         {}
@@ -358,20 +358,20 @@ func _ExchangeService_ListPaymentMethods_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ExchangeService_BuyToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BuyTokenRequest)
+func _ExchangeService_BuyPoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BuyPointsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ExchangeServiceServer).BuyToken(ctx, in)
+		return srv.(ExchangeServiceServer).BuyPoints(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ExchangeService_BuyToken_FullMethodName,
+		FullMethod: ExchangeService_BuyPoints_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ExchangeServiceServer).BuyToken(ctx, req.(*BuyTokenRequest))
+		return srv.(ExchangeServiceServer).BuyPoints(ctx, req.(*BuyPointsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -416,8 +416,8 @@ var ExchangeService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ExchangeService_ListPaymentMethods_Handler,
 		},
 		{
-			MethodName: "BuyToken",
-			Handler:    _ExchangeService_BuyToken_Handler,
+			MethodName: "BuyPoints",
+			Handler:    _ExchangeService_BuyPoints_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -30,7 +30,7 @@ describe("identity", () => {
     const second = await importDpopSeed(secondSeed)
     const firstId = providerId(thumbprintFromJwk(await crypto.subtle.exportKey("jwk", first.publicKey)))
     const secondId = providerId(thumbprintFromJwk(await crypto.subtle.exportKey("jwk", second.publicKey)))
-    expect(firstId).toMatch(/^bafk[a-z0-9]+$/)
+    expect(firstId).toMatch(/^[a-z2-7]{62}$/)
     expect(firstId).not.toBe(secondId)
   })
 })

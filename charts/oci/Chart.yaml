@@ -3,7 +3,7 @@ name: oci
 description: Reusable PAID OCI registry stack with optional gateway, metering dependency, .
 type: application
 version: 0.1.0
-appVersion: "dev"
+appVersion: "main"
 dependencies:
   - name: meter
     version: 0.1.0

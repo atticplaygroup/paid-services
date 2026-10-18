@@ -104,7 +104,7 @@ describe("OCI /v2/ endpoints", () => {
     const res = await app.fetch(
       new Request("http://test/v2/alice/testrepo/blobs/uploads/", {
         method: "POST",
-        headers: { "x-user-id": "alice" },
+        headers: { "x-user-id": "alice", "x-request-id": "upload-init" },
       }),
     )
     expect(res.status).toBe(202)
@@ -119,6 +119,30 @@ describe("OCI /v2/ endpoints", () => {
     expect(res.status).toBe(401)
   })
 
+  it("PUT /v2/:name/blobs/uploads/:uuid returns 400 without x-request-id", async () => {
+    const app = createOciApp(fakeDeps())
+    const res = await app.fetch(
+      new Request("http://test/v2/alice/testrepo/blobs/uploads/test-uuid?digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
+        method: "PUT",
+        headers: { "x-user-id": "alice" },
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it("uses the upstream x-request-id for metering", async () => {
+    const deps = fakeDeps()
+    const app = createOciApp(deps)
+    const res = await app.fetch(
+      new Request("http://test/v2/alice/testrepo/blobs/uploads/", {
+        method: "POST",
+        headers: { "x-user-id": "alice", "x-request-id": "upstream-request" },
+      }),
+    )
+    expect(res.status).toBe(202)
+    expect(deps.meter.reportUsage).toHaveBeenCalledWith("upstream-request", "alice")
+  })
+
   it("PUT /v2/:name/blobs/uploads/:uuid stores blob and returns 201", async () => {
     const deps = fakeDeps()
     deps.kvstore.putBlob = mock(async () => {})
@@ -126,7 +150,7 @@ describe("OCI /v2/ endpoints", () => {
     const res = await app.fetch(
       new Request("http://test/v2/alice/testrepo/blobs/uploads/test-uuid-123?digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
         method: "PUT",
-        headers: { "x-user-id": "alice" },
+        headers: { "x-user-id": "alice", "x-request-id": "blob-request" },
         body: new Uint8Array([7, 8, 9]),
       }),
     )
@@ -139,7 +163,7 @@ describe("OCI /v2/ endpoints", () => {
     const res = await app.fetch(
       new Request("http://test/v2/alice/testrepo/blobs/uploads/test-uuid", {
         method: "PUT",
-        headers: { "x-user-id": "alice" },
+        headers: { "x-user-id": "alice", "x-request-id": "invalid-digest-request" },
       }),
     )
     expect(res.status).toBe(400)
@@ -152,7 +176,7 @@ describe("OCI /v2/ endpoints", () => {
     const res = await app.fetch(
       new Request("http://test/v2/alice/testrepo/blobs/uploads/test-uuid?digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", {
         method: "PUT",
-        headers: { "x-user-id": "alice" },
+        headers: { "x-user-id": "alice", "x-request-id": "failed-deduction-request" },
       }),
     )
     expect(res.status).toBe(402)
@@ -166,7 +190,7 @@ describe("OCI manifest endpoints", () => {
     const res = await app.fetch(
       new Request("http://test/v2/alice/testrepo/manifests/latest", {
         method: "PUT",
-        headers: { "x-user-id": "alice", "Content-Type": "application/vnd.oci.image.manifest.v1+json" },
+        headers: { "x-user-id": "alice", "x-request-id": "manifest-request", "Content-Type": "application/vnd.oci.image.manifest.v1+json" },
         body: JSON.stringify(manifest),
       }),
     )
@@ -180,7 +204,7 @@ describe("OCI manifest endpoints", () => {
     await app.fetch(
       new Request("http://test/v2/alice/testrepo/manifests/latest", {
         method: "PUT",
-        headers: { "x-user-id": "alice", "Content-Type": "application/vnd.oci.image.manifest.v1+json" },
+        headers: { "x-user-id": "alice", "x-request-id": "manifest-request", "Content-Type": "application/vnd.oci.image.manifest.v1+json" },
         body: JSON.stringify(manifest),
       }),
     )

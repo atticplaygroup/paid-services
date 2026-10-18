@@ -1,0 +1,12 @@
+dependencies:
+- name: kvstore
+  repository: file://../../../charts/kvstore
+  version: 0.1.0
+- name: exchange
+  repository: file://../../../charts/exchange
+  version: 0.1.0
+- name: outproxy-with-faucet
+  repository: file://../../../charts/outproxy-with-faucet
+  version: 0.1.0
+digest: sha256:8768d48454605347ee8505291a37adead89acafbf72ad803be380b56bab78635
+generated: "2026-10-03T11:13:56.23462715Z"

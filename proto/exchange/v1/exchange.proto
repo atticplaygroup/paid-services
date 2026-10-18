@@ -33,16 +33,16 @@ service ExchangeService {
   rpc ListPaymentMethods(ListPaymentMethodsRequest) returns (ListPaymentMethodsResponse) {
   }
 
-  rpc BuyToken(BuyTokenRequest) returns (BuyTokenResponse) {
+  rpc BuyPoints(BuyPointsRequest) returns (BuyPointsResponse) {
   }
 }
 
-message BuyTokenRequest {
-  string audience = 1 [(buf.validate.field).string.pattern = "^bafk[a-z0-9]+$"];
+message BuyPointsRequest {
+  string audience = 1 [(buf.validate.field).string.pattern = "^[a-z2-7]{62}$"];
   int64 amount = 2 [(buf.validate.field).int64.gt = 0];
 }
 
-message BuyTokenResponse {
+message BuyPointsResponse {
   string token = 1;
 }
 
@@ -128,7 +128,7 @@ message BatchProcessWithdrawsResponse {
 }
 
 message Withdrawal {
-  string owner = 1 [(buf.validate.field).string.pattern = "^[a-z2-7]{59}$"];
+  string owner = 1 [(buf.validate.field).string.pattern = "^[a-z2-7]{62}$"];
   int64 withdrawal_id = 2 [(buf.validate.field).int64.gt = 0];
   string address_to = 3 [
     (buf.validate.field).string.pattern = "0x[a-f0-9]{64}"
@@ -208,10 +208,4 @@ message Account {
   int64 balance = 5 [
     (buf.validate.field).int64.gte = 0
   ];
-}
-
-enum JwtUsage {
-  JWT_USAGE_UNSPECIFIED = 0;
-  JWT_USAGE_CREATE_SESSION = 1;
-  JWT_USAGE_MANAGE_SESSION = 2;
 }

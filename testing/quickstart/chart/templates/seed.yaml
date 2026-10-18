@@ -1,0 +1,39 @@
+{{- if .Values.seed.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-seed
+spec:
+  schedule: {{ .Values.seed.schedule | quote }}
+  suspend: {{ .Values.seed.suspend }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          restartPolicy: Never
+          enableServiceLinks: false
+          containers:
+            - name: seed
+              image: {{ .Values.proxy.cashierImage | quote }}
+              imagePullPolicy: {{ .Values.proxy.imagePullPolicy }}
+              command: [bun, /app/quickstart/seed.ts]
+              env:
+                - { name: PROVIDER_ORIGIN, value: "http://{{ .Values.provider.fullnameOverride }}-envoy:8080" }
+                - { name: PROXY_ORIGIN, value: "http://{{ .Values.proxy.fullnameOverride | default .Release.Name }}:{{ .Values.proxy.port }}" }
+                - { name: TTL_SECONDS, value: {{ .Values.seed.ttlSeconds | int64 | quote }} }
+                - { name: NODE_EXTRA_CA_CERTS, value: /tls/ca.crt }
+              volumeMounts:
+                - { name: seed, mountPath: /app/quickstart, readOnly: true }
+                - { name: seed, mountPath: /fixtures, readOnly: true }
+                - { name: tls, mountPath: /tls, readOnly: true }
+          volumes:
+            - name: seed
+              configMap: { name: {{ .Release.Name }}-seed }
+            - name: tls
+              secret: { secretName: {{ .Values.proxy.tls.existingProxySecret | default (printf "%s-proxy-tls" .Release.Name) }} }
+{{- end }}

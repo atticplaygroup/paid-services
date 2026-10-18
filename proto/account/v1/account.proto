@@ -9,18 +9,13 @@ package account.v1;
 
 message Account {
   string account_id = 1 [
-    (buf.validate.field).string.pattern = "^[a-z2-7]{59}$"
+    (buf.validate.field).string.pattern = "^[a-z2-7]{62}$"
   ];
   int64 balance = 2 [
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).int64.gte = 0
   ];
   google.protobuf.Timestamp expire_time = 3;
-}
-
-enum JwtUsage {
-  JWT_USAGE_UNSPECIFIED = 0;
-  JWT_USAGE_DEPOSIT = 1;
 }
 
 message DepositOrCreateAccountRequest {
@@ -51,10 +46,7 @@ message GetAccountResponse {
 }
 
 message CreditBalanceRequest {
-  string user_id = 1 [
-    (buf.validate.field).string.pattern = "^[a-z2-7]{59}$"
-  ];
-  int64 amount = 2 [
+  int64 amount = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).int64.gt = 0
   ];

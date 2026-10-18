@@ -13,7 +13,7 @@ spec:
     spec:
       containers:
         - name: authz-http
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ required "meter.image.repository is required" .Values.image.repository }}:{{ (.Values.image.tag | default .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/authz-http"]
           env:

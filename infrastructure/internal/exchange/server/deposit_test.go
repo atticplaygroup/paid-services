@@ -222,7 +222,13 @@ func TestDepositStoresSignedChallenge(t *testing.T) {
 	if account.GetBalance() != 99 {
 		t.Fatalf("balance=%d want 99", account.GetBalance())
 	}
-	if account.GetExpireTime().AsTime().Equal(time.Time{}) {
-		t.Fatalf("expire time=%v is before database current time", account.GetExpireTime().AsTime())
+	var storedTTLSeconds float64
+	if err := storeInstance.GetConn().QueryRow(context.Background(),
+		"SELECT EXTRACT(EPOCH FROM expire_time - create_time) FROM accounts WHERE principal = $1",
+		"deposit-user").Scan(&storedTTLSeconds); err != nil {
+		t.Fatalf("query account lifetime: %v", err)
+	}
+	if storedTTLSeconds != 1 {
+		t.Fatalf("stored account lifetime=%g seconds want 1", storedTTLSeconds)
 	}
 }

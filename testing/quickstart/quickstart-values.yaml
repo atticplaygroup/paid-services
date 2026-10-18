@@ -1,0 +1,28 @@
+proxy:
+  outproxyImage: local/outproxy:dev
+  cashierImage: local/cashier:dev
+  proxyTls:
+    enabled: false
+provider:
+  image:
+    repository: local/infrastructure
+    tag: dev
+  meter:
+    image:
+      repository: local/infrastructure
+      tag: dev
+  s3:
+    image:
+      repository: chrislusf/seaweedfs
+      # SeaweedFS 4.48; publisher image pinned by digest.
+      digest: sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+exchange:
+  image:
+    repository: local/infrastructure
+    tag: dev
+  meter:
+    image:
+      repository: local/infrastructure
+      tag: dev
+seed:
+  suspend: true

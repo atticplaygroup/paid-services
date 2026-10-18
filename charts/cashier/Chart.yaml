@@ -3,4 +3,4 @@ name: cashier
 description: Lazy funding service returning DPoP access tokens
 type: application
 version: 0.1.0
-appVersion: "dev"
+appVersion: "main"

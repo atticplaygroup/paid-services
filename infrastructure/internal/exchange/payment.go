@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"os"
-	"strconv"
 	"strings"
 
-	"github.com/shurcooL/graphql"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -49,26 +48,21 @@ type EpochGetter struct {
 type SuiPaymentClient struct {
 	SuiClient     suiV2.Client
 	SuiGrpcClient *grpcconn.SuiGrpcClient
-	GqlClient     *graphql.Client
 	Signer        signer.Signer
 	EpochGetter   IEpochGetter
 }
 
 func NewSuiPaymentClient(network string, walletSigner *signer.Signer) (*SuiPaymentClient, error) {
-	var clientUrl, graphqlClientUrl string
+	var clientUrl string
 	switch network {
 	case "localnet":
 		clientUrl = envOr("SUI_GRPC_URL", "sui-localnet:9000")
-		graphqlClientUrl = envOr("SUI_GRAPHQL_URL", "http://sui-localnet:9125/graphql")
 	case "mainnet":
 		clientUrl = "fullnode.mainnet.sui.io:443"
-		graphqlClientUrl = "https://graphql.mainnet.sui.io/graphql"
 	case "testnet":
 		clientUrl = "fullnode.testnet.sui.io:443"
-		graphqlClientUrl = "https://graphql.testnet.sui.io/graphql"
 	case "devnet":
 		clientUrl = "fullnode.devnet.sui.io:443"
-		graphqlClientUrl = "https://graphql.devnet.sui.io/graphql"
 	default:
 		return nil, fmt.Errorf("unknown network %s", network)
 	}
@@ -88,7 +82,6 @@ func NewSuiPaymentClient(network string, walletSigner *signer.Signer) (*SuiPayme
 	ret := SuiPaymentClient{
 		SuiClient:     suiClient,
 		SuiGrpcClient: gc,
-		GqlClient:     graphql.NewClient(graphqlClientUrl, nil),
 		Signer:        *walletSigner,
 	}
 	ret.EpochGetter = &EpochGetter{suiClient: suiClient, SuiGrpcClient: gc}
@@ -280,61 +273,54 @@ func (c *SuiPaymentClient) CheckDeposit(ctx context.Context, digest string, maxG
 	if err != nil {
 		return nil, fmt.Errorf("get current epoch: %w", err)
 	}
-	var q struct {
-		Transaction struct {
-			Sender struct {
-				Address string
-			}
-			Effects struct {
-				BalanceChanges struct {
-					Nodes []struct {
-						Owner struct {
-							Address string
-						}
-						Amount   string
-						CoinType struct {
-							Repr string
-						}
-					}
-				}
-				Timestamp string
-				Epoch     struct {
-					EpochId int
-				}
-			}
-		} `graphql:"transaction(digest: $digest)"`
-	}
-
-	variables := map[string]any{
-		"digest": digest,
-	}
-	err = c.GqlClient.Query(ctx, &q, variables)
+	ledger, err := c.SuiGrpcClient.LedgerService(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("graphql query failed: %w", err)
+		return nil, fmt.Errorf("get ledger service: %w", err)
 	}
-	if q.Transaction.Sender.Address == "" {
+	// Verify the executed transaction directly on the fullnode.
+	response, err := ledger.GetTransaction(ctx, &v2.GetTransactionRequest{
+		Digest: &digest,
+		ReadMask: &fieldmaskpb.FieldMask{Paths: []string{
+			"digest", "transaction.sender", "effects.status", "effects.epoch", "balance_changes",
+		}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get deposit transaction: %w", err)
+	}
+	return checkTransaction(response.GetTransaction(), digest, c.Signer.Address, currentEpoch.GetEpoch(), maxGapEpochs)
+}
+
+func checkTransaction(tx *v2.ExecutedTransaction, digest, recipient string, currentEpoch uint64, maxGapEpochs int) (*DepositTransferInfo, error) {
+	if tx == nil || tx.GetDigest() != digest || tx.GetTransaction().GetSender() == "" {
 		return nil, fmt.Errorf("no transaction found for digest")
 	}
-	if q.Transaction.Effects.Epoch.EpochId+maxGapEpochs < int(currentEpoch.GetEpoch()) {
+	if !tx.GetEffects().GetStatus().GetSuccess() || tx.GetEffects().Epoch == nil {
+		return nil, fmt.Errorf("deposit transaction did not succeed")
+	}
+	epoch := tx.GetEffects().GetEpoch()
+	if maxGapEpochs < 0 || epoch > currentEpoch || currentEpoch-epoch > uint64(maxGapEpochs) {
 		return nil, fmt.Errorf("deposit too late")
 	}
-	for _, node := range q.Transaction.Effects.BalanceChanges.Nodes {
-		if node.Amount != "" && node.Owner.Address == c.Signer.Address {
-			amount, err := strconv.Atoi(node.Amount)
-			if err != nil {
-				return nil, fmt.Errorf("parse amount: %s", node.Amount)
-			}
-			// FIXME: currently only the first matching effect is considered. User will lose money if they deposit with multiple effects.
-			return &DepositTransferInfo{
-				TransferInfo: &TransferInfo{
-					Amount:  int64(amount),
-					Address: q.Transaction.Sender.Address,
-				},
-				Epoch: int64(q.Transaction.Effects.Epoch.EpochId),
-			}, nil
+	amount := new(big.Int)
+	for _, change := range tx.GetBalanceChanges() {
+		coin := strings.Split(change.GetCoinType(), "::")
+		if change.GetAddress() != recipient || len(coin) != 3 ||
+			strings.TrimLeft(strings.TrimPrefix(coin[0], "0x"), "0") != "2" || coin[1] != "sui" || coin[2] != "SUI" {
+			continue
 		}
+		value, ok := new(big.Int).SetString(change.GetAmount(), 10)
+		if !ok {
+			return nil, fmt.Errorf("parse deposit amount: %s", change.GetAmount())
+		}
+		amount.Add(amount, value)
 	}
-	return nil, fmt.Errorf("no valid transaction found")
+	if amount.Sign() <= 0 || !amount.IsInt64() {
+		return nil, fmt.Errorf("invalid SUI deposit amount")
+	}
+	return &DepositTransferInfo{
+		TransferInfo: &TransferInfo{Amount: amount.Int64(), Address: tx.GetTransaction().GetSender()},
+		Epoch:        int64(epoch),
+	}, nil
 }
 
 // fetchFirstSuiCoin returns the first SUI coin owned by the address, suitable

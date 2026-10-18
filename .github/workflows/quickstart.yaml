@@ -1,0 +1,59 @@
+name: Quickstart kind
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/master') }}
+
+jobs:
+  quickstart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IMAGE_PREFIX: ${{ vars.IMAGE_PREFIX || 'ghcr.io/atticplaygroup/paid-services' }}
+      IMAGE_TAG: ${{ github.sha }}
+      CI_EMPTY_WALLET: "true"
+      CLUSTER_NAME: quickstart-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare runner paths
+        run: |
+          mkdir -p "$RUNNER_TOOL_CACHE"
+          printf 'KUBECONFIG=%s/quickstart.kubeconfig\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: Azure/setup-helm@v4
+        with:
+          version: v3.18.6
+      - uses: helm/kind-action@v1.13.0
+        with:
+          cluster_name: ${{ env.CLUSTER_NAME }}
+          kubeconfig: ${{ env.KUBECONFIG }}
+          node_image: kindest/node:v1.34.0
+          kubectl_version: v1.34.0
+      - name: Build quickstart images
+        run: bash testing/quickstart/build.sh
+      - name: Load images and deploy quickstart
+        run: bash testing/quickstart/quickstart-kind.sh
+      - name: Verify paying wallet starts empty
+        run: bash testing/quickstart/quickstart-empty-wallet.sh
+      - name: Seed through lazy devnet payments
+        run: bash testing/quickstart/quickstart.sh
+      - name: Read HTTPS through the shared proxy
+        run: bash testing/quickstart/quickstart-read.sh
+      - name: Read through the independently installed proxy chart
+        run: bash testing/quickstart/standalone-proxy.sh
+      - name: Failure diagnostics
+        if: failure()
+        run: |
+          kubectl -n quickstart get pods,jobs,events -o wide || true
+          kubectl -n quickstart describe pods || true
+          for pod in $(kubectl -n quickstart get pods -o name); do
+            kubectl -n quickstart logs "$pod" --all-containers --tail=200 || true
+          done

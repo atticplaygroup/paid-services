@@ -114,8 +114,8 @@ var _ = Describe("Checking deposit into database", Label("db"), func() {
 			})
 			Expect(err).To(BeNil())
 
-			err = s.BuyTokenTx(ctx, s.Queries, &store.BuyTokenTxParams{
-				Req: &pb.BuyTokenRequest{
+			err = s.BuyPointsTx(ctx, s.Queries, &store.BuyPointsTxParams{
+				Req: &pb.BuyPointsRequest{
 					Audience: "bafk-test-seller",
 					Amount:   100,
 				},

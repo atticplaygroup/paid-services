@@ -20,9 +20,8 @@ type PostgresStore struct {
 const DefaultTTL = utils.AccountDefaultTtl
 
 func ttlInterval(ttl time.Duration) pgtype.Interval {
-	microseconds := (ttl.Microseconds() + 999) / 1000
 	return pgtype.Interval{
-		Microseconds: microseconds,
+		Microseconds: ttl.Microseconds(),
 		Valid:        true,
 	}
 }

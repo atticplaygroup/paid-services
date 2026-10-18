@@ -1,6 +1,8 @@
 package account
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
 	"path/filepath"
 
@@ -14,10 +16,9 @@ type Config struct {
 
 	ListenAddress string `mapstructure:"LISTEN_ADDRESS"`
 
-	ValidExchangeHosts    []string `mapstructure:"VALID_EXCHANGE_HOSTS"`
-	ValidAudience         string   `mapstructure:"VALID_AUDIENCE"`
-	EnableIssuerWhitelist bool     `mapstructure:"ENABLE_ISSUER_WHITELIST"`
-	ValidIssuers          []string `mapstructure:"VALID_ISSUERS"`
+	TrustedIssuersJSON string          `mapstructure:"TRUSTED_ISSUERS"`
+	TrustedIssuers     []TrustedIssuer `mapstructure:"-"`
+	ValidAudience      string          `mapstructure:"VALID_AUDIENCE"`
 
 	FaucetMode bool `mapstructure:"FAUCET_MODE"`
 
@@ -29,8 +30,6 @@ type Config struct {
 
 	BalanceBackend      string `mapstructure:"BALANCE_BACKEND"`
 	ExchangeDatabaseURL string `mapstructure:"EXCHANGE_DATABASE_URL"`
-
-	RedeemExchangeTokens bool `mapstructure:"REDEEM_EXCHANGE_TOKENS"`
 }
 
 func LoadConfig(name string, path string) (config Config) {
@@ -48,11 +47,9 @@ func LoadConfig(name string, path string) (config Config) {
 	viper.SetDefault("REQUEST_ID_HEADER_NAME", "x-request-id")
 	for _, k := range []string{
 		"REDIS_HOST", "REDIS_PORT", "GRPC_PORT", "FAUCET_MODE",
-		"VALID_EXCHANGE_HOSTS", "VALID_AUDIENCE",
-		"ENABLE_ISSUER_WHITELIST", "VALID_ISSUERS",
+		"TRUSTED_ISSUERS", "VALID_AUDIENCE",
 		"VALID_COIN_TYPE", "VALID_COIN_ENVIRONMENT",
 		"BALANCE_BACKEND", "EXCHANGE_DATABASE_URL",
-		"REDEEM_EXCHANGE_TOKENS",
 		"USER_ID_HEADER_NAME", "REQUEST_ID_HEADER_NAME",
 	} {
 		_ = viper.BindEnv(k)
@@ -65,5 +62,22 @@ func LoadConfig(name string, path string) (config Config) {
 	if err := viper.Unmarshal(&config); err != nil {
 		log.Fatalf("config: %v", err)
 	}
+	if config.TrustedIssuersJSON != "" {
+		if err := json.Unmarshal([]byte(config.TrustedIssuersJSON), &config.TrustedIssuers); err != nil {
+			log.Fatalf("TRUSTED_ISSUERS: %v", err)
+		}
+	}
 	return
+}
+
+type TrustedIssuer struct {
+	Issuer  string `json:"issuer"`
+	JWKSURL string `json:"jwksUrl"`
+}
+
+func (t TrustedIssuer) Validate() error {
+	if t.Issuer == "" || t.JWKSURL == "" {
+		return fmt.Errorf("issuer and jwksUrl are required")
+	}
+	return nil
 }

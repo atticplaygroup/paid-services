@@ -1,6 +1,6 @@
 dependencies:
 - name: meter
   repository: file://../meter
-  version: 0.1.5
-digest: sha256:9a77271036a2c4f7597c0b29b484d131069beebfd292ab579cc5abaa902b93d0
-generated: "2026-09-13T07:54:09.682693426Z"
+  version: 0.1.0
+digest: sha256:24de9df2161c08f5d8c5cfab748839206dfee08a5967c1372e81cf8b9c2a4367
+generated: "2026-10-03T04:38:20.500038945Z"

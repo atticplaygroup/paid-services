@@ -55,7 +55,7 @@ func NewServer(conf *Config) (*Server, error) {
 			conf.MinioAccessKey,
 			conf.MinioSecretKey,
 			conf.MinioBucket,
-			true, // in-cluster MinIO is HTTP
+			!conf.S3Secure,
 		))
 		var ensureErr error
 		for attempt := 1; attempt <= 20; attempt++ {

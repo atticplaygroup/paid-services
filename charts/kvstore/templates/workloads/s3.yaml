@@ -1,0 +1,62 @@
+{{- if .Values.s3.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kvstore.fullname" . }}-s3
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: {{ include "kvstore.fullname" . }}-s3 }
+  template:
+    metadata:
+      labels: { app: {{ include "kvstore.fullname" . }}-s3 }
+    spec:
+      {{- with .Values.s3.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seaweedfs
+          image: {{ if .Values.s3.image.digest }}{{ printf "%s@%s" .Values.s3.image.repository .Values.s3.image.digest | quote }}{{ else }}{{ printf "%s:%s" .Values.s3.image.repository .Values.s3.image.tag | quote }}{{ end }}
+          imagePullPolicy: {{ .Values.s3.image.pullPolicy }}
+          args: ["mini", "-dir=/data", "-s3.port=9000", "-s3.config=/etc/seaweedfs/s3.json", "-webdav=false", "-master.telemetry=false"]
+          readinessProbe:
+            tcpSocket: { port: api }
+            periodSeconds: 2
+          startupProbe:
+            tcpSocket: { port: api }
+            periodSeconds: 2
+            failureThreshold: 60
+          ports:
+            - { name: api, containerPort: 9000 }
+
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: credentials, mountPath: /etc/seaweedfs, readOnly: true }
+      volumes:
+        - name: data
+          {{- if .Values.s3.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "kvstore.fullname" . }}-s3
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: credentials
+          secret:
+            secretName: {{ include "kvstore.s3Secret" . }}
+            items: [{ key: s3.json, path: s3.json }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kvstore.fullname" . }}-s3
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "kvstore.fullname" . }}-s3 }
+  ports:
+    - { name: api, port: 9000, targetPort: api }
+
+{{- end }}

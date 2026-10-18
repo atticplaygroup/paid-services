@@ -1,7 +1,8 @@
-# TODO(prod): pin digests; no mutable tags in examples
+# Supply the application image repository and a deployment-owned version.
 image:
-  repository: oci.example.com/infrastructure
-  tag: dev
+  repository: ghcr.io/atticplaygroup/paid-services/infrastructure
+  # Defaults to Chart.appVersion; CI supplies a commit-specific tag.
+  tag: ""
   pullPolicy: IfNotPresent
 fullnameOverride: ""
 balanceBackend: redis
@@ -12,13 +13,14 @@ redis:
   host: "" # host: meter-redis
   address: "" # address: meter-redis:6379
 account:
-  validExchangeHosts: []
-    # - exchange:8080
+  trustedIssuers: []
+    # - issuer: https://exchange.example.com
+    #   jwksUrl: https://exchange.example.com/.well-known/jwks.json
   validAudience: ""
   validCoinType: 1
   validCoinEnvironment: 4
   faucetMode: false
-als:
+deduction:
   feedbackEnabled: false
   feedbackTTLSeconds: 10
   outproxyAddress: ""

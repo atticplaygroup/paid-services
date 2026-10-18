@@ -14,7 +14,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: oci
-          image: "{{ .Values.ociImage.repository }}:{{ .Values.ociImage.tag }}"
+          image: "{{ required "oci.ociImage.repository is required" .Values.ociImage.repository }}:{{ (.Values.ociImage.tag | default .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.ociImage.pullPolicy }}
           command: ["bun", "run", "src/index.ts"]
           env:
@@ -22,19 +22,36 @@ spec:
               value: "3000"
             - name: KVSTORE_ADDRESS
               value: {{ required "oci.env.kvstoreAddress must be non-empty" .Values.env.kvstoreAddress | quote }}
-            - name: ALS_ADDRESS
-              value: "http://{{ required "oci.env.alsAddress must be non-empty" .Values.env.alsAddress }}"
+            {{- if .Values.env.outproxyAddress }}
+            - name: OUTPROXY_ADDRESS
+              value: {{ .Values.env.outproxyAddress | quote }}
+            {{- end }}
+            {{- if .Values.env.outproxyCaSecretName }}
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/outproxy-ca/ca.crt
+            {{- end }}
+            - name: DEDUCTION_ADDRESS
+              value: "http://{{ required "oci.env.deductionAddress must be non-empty" .Values.env.deductionAddress }}"
             - name: DEDUCTION_AMOUNT
               value: "{{ .Values.env.deductionAmount }}"
             - name: READ_ONLY_MODE
               value: {{ .Values.env.readOnlyMode | quote }}
-            - name: DPOP_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: dpop-key
-                  key: dpop-private-key
+            - name: DPOP_MASTER_SECRET
+              value: {{ required "oci.env.dpopMasterSecret must be non-empty" .Values.env.dpopMasterSecret | quote }}
           ports:
             - { name: http, containerPort: 3000 }
+          {{- if .Values.env.outproxyCaSecretName }}
+          volumeMounts:
+            - { name: outproxy-ca, mountPath: /etc/outproxy-ca, readOnly: true }
+          {{- end }}
+      {{- if .Values.env.outproxyCaSecretName }}
+      volumes:
+        - name: outproxy-ca
+          secret:
+            secretName: {{ .Values.env.outproxyCaSecretName }}
+            items:
+              - { key: ca.crt, path: ca.crt }
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

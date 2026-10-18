@@ -7,8 +7,8 @@ data:
   seed.sh: |
     #!/bin/sh
     set -eu
-    until redis-cli -h {{ required "kvstore.redisAddress must be non-empty" .Values.redisAddress | quote }} ping >/dev/null; do sleep 1; done
+    until valkey-cli -h {{ required "kvstore.redisAddress must be non-empty" .Values.redisAddress | quote }} ping >/dev/null; do sleep 1; done
     {{- range .Values.env.priceSeed }}
-    redis-cli -h {{ required "kvstore.redisAddress must be non-empty" $.Values.redisAddress | quote }} HSET {{ .key | quote }}{{ range .fields }} {{ .name | quote }} {{ .value | quote }}{{ end }}
+    valkey-cli -h {{ required "kvstore.redisAddress must be non-empty" $.Values.redisAddress | quote }} HSET {{ .key | quote }}{{ range .fields }} {{ .name | quote }} {{ .value | quote }}{{ end }}
     {{- end }}
 {{- end }}

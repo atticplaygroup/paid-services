@@ -24,7 +24,7 @@ export function base64UrlDecode(value: string): Uint8Array<ArrayBuffer> {
 
 export function providerId(thumbprint: Uint8Array): string {
   if (thumbprint.length !== 32) throw new Error("provider thumbprint must be 32 bytes")
-  return CID.create(1, 0x55, createDigest(0x12, thumbprint)).toString()
+  return CID.create(1, 0xeb51, createDigest(0x12, thumbprint)).toString()
 }
 
 export async function importDpopSeed(seed: Uint8Array): Promise<dpop.KeyPair> {

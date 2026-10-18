@@ -14,10 +14,30 @@ spec:
     spec:
       containers:
         - name: mysql
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["docker-entrypoint.sh"]
-          args: ["mysqld", "--gtid-mode=ON", "--enforce-gtid-consistency=ON", "--log-bin", "--server-id=1"]
+          args:
+            - mysqld
+            - --gtid-mode=ON
+            - --enforce-gtid-consistency=ON
+            - --log-bin
+            - --server-id=1
+            - --binlog-format=ROW
+            - --binlog-rows-query-log-events=OFF
+            - {{ printf "--binlog-expire-logs-seconds=%d" (int .Values.mysql.binlogExpireLogsSeconds) | quote }}
+            {{- if not .Values.mysql.exportedSchemas }}
+            {{- fail "mysql.exportedSchemas must contain at least one schema" }}
+            {{- end }}
+            {{- if .Values.mysql.binlogDoDb }}
+            {{- fail "mysql.binlogDoDb is no longer supported; use mysql.exportedSchemas for baseline and binlog selection" }}
+            {{- end }}
+            {{- range .Values.mysql.exportedSchemas }}
+            {{- if not (regexMatch "^[A-Za-z0-9_$-]+$" .) }}
+            {{- fail "mysql.exportedSchemas names may contain only letters, digits, underscores, dollar signs, and hyphens" }}
+            {{- end }}
+            - {{ printf "--binlog-do-db=%s" . | quote }}
+            {{- end }}
           env:
             - name: MYSQL_ROOT_PASSWORD
               value: {{ .Values.mysql.rootPassword | quote }}
@@ -28,6 +48,57 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
+        - name: publisher
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["bash", "-euc"]
+          args:
+            - |
+              export MYSQL_PWD="$MYSQL_PASSWORD"
+              until mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse 'SELECT 1' >/dev/null 2>&1; do
+                sleep 2
+              done
+              mkdir -p "$OUTPUT_DIR"
+              find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
+              exec /usr/local/bin/supercronic -inotify /etc/mysql-publisher/crontab
+          env:
+            - name: MYSQL_HOST
+              value: "127.0.0.1"
+            - name: MYSQL_PORT
+              value: "3306"
+            - name: MYSQL_USER
+              value: "root"
+            - name: MYSQL_PASSWORD
+              value: {{ .Values.mysql.rootPassword | quote }}
+            - name: MYSQL_EXPORT_SCHEMAS
+              value: {{ join "," .Values.mysql.exportedSchemas | quote }}
+            - name: MYSQL_BINLOG_DIR
+              value: "/var/lib/mysql"
+            - name: OCI_ADDRESS
+              value: {{ required "mysql-proposer.packer.ociAddress must be non-empty" .Values.packer.ociAddress | quote }}
+            - name: BASELINE_REPO
+              value: {{ .Values.packer.baselineRepo | quote }}
+            - name: DELTA_REPO
+              value: {{ .Values.packer.deltaRepo | quote }}
+            - name: MANIFEST_REPO
+              value: {{ .Values.packer.manifestRepo | quote }}
+            - name: APPLICATION
+              value: {{ .Values.packer.application | quote }}
+            - name: OWNER
+              value: {{ .Values.owner | default "proposer" | quote }}
+            - name: PUBLISH_STATE_DIR
+              value: "/var/lib/mysql/publication-state"
+            - name: OUTPUT_DIR
+              value: "/var/lib/mysql/publication-work"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: publisher-schedule
+              mountPath: /etc/mysql-publisher
+      volumes:
+        - name: publisher-schedule
+          configMap:
+            name: mysql-proposer-publisher
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -35,4 +106,4 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 1Gi
+            storage: {{ .Values.persistence.size | quote }}

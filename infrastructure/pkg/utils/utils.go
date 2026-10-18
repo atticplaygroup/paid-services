@@ -9,6 +9,9 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
+// JWKJCSPublicKeyCodec identifies canonical public JWK JSON (RFC 8785).
+const JWKJCSPublicKeyCodec uint64 = 0xeb51
+
 func AuthzKey(thumb string) string {
 	return fmt.Sprintf("u:%s", thumb)
 }
@@ -18,10 +21,20 @@ func FormatPrincipal(publicKey any) (*cid.Cid, error) {
 	if err != nil {
 		return nil, err
 	}
-	return DigestToMultihash(thumb)
+	return PrincipalFromThumbprint(thumb)
 }
 
+// PrincipalFromThumbprint encodes an RFC 7638 SHA-256 public JWK thumbprint.
+func PrincipalFromThumbprint(digest []byte) (*cid.Cid, error) {
+	return digestToCID(digest, JWKJCSPublicKeyCodec)
+}
+
+// DigestToMultihash encodes raw content, not an account principal.
 func DigestToMultihash(digest []byte) (*cid.Cid, error) {
+	return digestToCID(digest, cid.Raw)
+}
+
+func digestToCID(digest []byte, codec uint64) (*cid.Cid, error) {
 	if len(digest) != 32 {
 		return &cid.Undef, fmt.Errorf("expected sha256 digest (32 bytes), got %d", len(digest))
 	}
@@ -29,7 +42,7 @@ func DigestToMultihash(digest []byte) (*cid.Cid, error) {
 	if err != nil {
 		return &cid.Undef, err
 	}
-	ret := cid.NewCidV1(cid.Raw, mh.Multihash(buf))
+	ret := cid.NewCidV1(codec, mh.Multihash(buf))
 	return &ret, nil
 }
 

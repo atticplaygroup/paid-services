@@ -16,9 +16,9 @@ static_resources:
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
                       common_config:
-                        log_name: {{ include "exchange.fullname" . }}-meter-als
+                        log_name: {{ include "exchange.fullname" . }}-meter-deduction
                         grpc_service:
-                          envoy_grpc: { cluster_name: {{ include "exchange.fullname" . }}-meter-als }
+                          envoy_grpc: { cluster_name: {{ include "exchange.fullname" . }}-meter-deduction }
                       additional_request_headers_to_log:
                         - x-external-request-id
                         - x-user-id
@@ -39,11 +39,8 @@ static_resources:
                       domains: ["*"]
                       routes:
                         - match:
-                            prefix: "/.well-known/jwks.json"
-                          direct_response:
-                            status: 200
-                            body:
-                              inline_string: "{}"
+                            path: "/.well-known/jwks.json"
+                          route: { cluster: exchange, timeout: 120s }
                           typed_per_filter_config:
                             envoy.filters.http.ext_authz:
                               "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
@@ -75,7 +72,7 @@ static_resources:
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   clusters:
-    - name: {{ include "exchange.fullname" . }}-meter-als
+    - name: {{ include "exchange.fullname" . }}-meter-deduction
       connect_timeout: 2s
       type: STRICT_DNS
       typed_extension_protocol_options:
@@ -84,13 +81,13 @@ static_resources:
           explicit_http_config:
             http2_protocol_options: {}
       load_assignment:
-        cluster_name: {{ include "exchange.fullname" . }}-meter-als
+        cluster_name: {{ include "exchange.fullname" . }}-meter-deduction
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
-                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-als, port_value: 9192 }
-    - name: {{ include "exchange.fullname" . }}-meter-als-connect
+                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-deduction, port_value: 9192 }
+    - name: {{ include "exchange.fullname" . }}-meter-deduction-connect
       connect_timeout: 2s
       type: STRICT_DNS
       typed_extension_protocol_options:
@@ -99,12 +96,12 @@ static_resources:
           explicit_http_config:
             http2_protocol_options: {}
       load_assignment:
-        cluster_name: {{ include "exchange.fullname" . }}-meter-als-connect
+        cluster_name: {{ include "exchange.fullname" . }}-meter-deduction-connect
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
-                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-als, port_value: 9193 }
+                    socket_address: { address: {{ include "exchange.fullname" . }}-meter-deduction, port_value: 9193 }
     - name: exchange
       connect_timeout: 2s
       type: STRICT_DNS

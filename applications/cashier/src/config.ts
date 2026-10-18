@@ -1,10 +1,13 @@
 import { PaymentCoinSchema, PaymentEnvironmentSchema, type PaymentCoin, type PaymentEnvironment } from "./proto/gen/es/exchange/v1/exchange_pb.js";
+import { validateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 
 export interface PaymentConfig {
   paymentCoin: PaymentCoin
   paymentEnvironment: PaymentEnvironment
   mnemonic: string
   suiRpcUrl?: string
+  autoFaucet?: boolean
   suiFaucetUrl?: string
 }
 
@@ -17,11 +20,10 @@ export interface AccountConfig {
 export interface CashierConfig {
   accounts: AccountConfig[]
   accountSalt: Uint8Array
-  insecure: boolean
   defaultChainDepositAmount: bigint
   defaultProviderDepositAmount: bigint
   accountOriginOverrides: Record<string, string>
-  exchangeOriginOverrides: Record<string, string>
+  manifestOriginOverrides: Record<string, string>
 }
 
 const DEFAULT_CHAIN_DEPOSIT_AMOUNT = 100_000_000n
@@ -32,7 +34,7 @@ function enumValue(schema: typeof PaymentCoinSchema | typeof PaymentEnvironmentS
   return schema.values.find((entry) => entry.name === value)?.number ?? Number.NaN
 }
 
-export function decodeEnvBytes(name: string, value: string): Uint8Array {
+export function decodeConfigBytes(name: string, value: string): Uint8Array {
   const normalized = value.trim()
   if (!normalized) throw new Error(`${name} is required`)
   if (/^0x[0-9a-fA-F]+$/.test(normalized)) {
@@ -45,22 +47,28 @@ export function decodeEnvBytes(name: string, value: string): Uint8Array {
   return new TextEncoder().encode(normalized)
 }
 
-export function loadCashierConfig(env: Record<string, string | undefined> = process.env): CashierConfig {
-  const accountsJson = env["CASHIER_ACCOUNTS"]
-  if (!accountsJson) throw new Error("CASHIER_ACCOUNTS is required")
-  type RawPayment = { paymentCoin?: string | number; paymentEnvironment?: string | number; mnemonic?: string; suiRpcUrl?: string; suiFaucetUrl?: string }
-  type RawAccount = { principal?: string; masterSecret?: string; masterSecretHex?: string; masterSecretBase64?: string; payments?: RawPayment[] }
-  const rawAccounts = JSON.parse(accountsJson) as RawAccount[]
-  if (!Array.isArray(rawAccounts) || rawAccounts.length === 0) throw new Error("CASHIER_ACCOUNTS must be a non-empty array")
+export function parseCashierConfig(rawConfig: string): CashierConfig {
+  type RawPayment = { paymentCoin?: string | number; paymentEnvironment?: string | number; mnemonic?: string; autoFaucet?: boolean; suiRpcUrl?: string; suiFaucetUrl?: string }
+  type RawAccount = { principal?: string; masterSecretMnemonic?: string; payments?: RawPayment[] }
+  type RawCashierConfig = {
+    accounts?: RawAccount[]
+    accountSalt?: string
+    defaultChainDepositAmount?: string | number
+    defaultProviderDepositAmount?: string | number
+    accountOriginOverrides?: Record<string, string>
+    manifestOriginOverrides?: Record<string, string>
+  }
+  const config = JSON.parse(rawConfig) as RawCashierConfig
+  const rawAccounts = config.accounts
+  if (!Array.isArray(rawAccounts) || rawAccounts.length === 0) throw new Error("accounts must be a non-empty array")
   const accounts = rawAccounts.map((raw) => {
     if (typeof raw.principal !== "string" || raw.principal.length === 0) throw new Error("account.principal is required")
-    const masterSecretBytes = raw.masterSecretHex
-      ? Uint8Array.fromHex(raw.masterSecretHex)
-      : raw.masterSecretBase64
-        ? Uint8Array.fromBase64(raw.masterSecretBase64)
-        : raw.masterSecret
-          ? decodeEnvBytes("masterSecret", raw.masterSecret)
-          : undefined
+    if (typeof raw.masterSecretMnemonic !== "string" || raw.masterSecretMnemonic.length === 0) throw new Error(`masterSecretMnemonic for ${raw.principal} is required`)
+    const normalizedMasterSecretMnemonic = raw.masterSecretMnemonic.normalize("NFKD")
+    if (!validateMnemonic(normalizedMasterSecretMnemonic, wordlist)) throw new Error(`invalid masterSecretMnemonic for ${raw.principal}`)
+    const masterSecretHasher = new Bun.CryptoHasher("sha256")
+    masterSecretHasher.update(new TextEncoder().encode(normalizedMasterSecretMnemonic))
+    const masterSecretBytes = new Uint8Array(masterSecretHasher.digest())
     if (!masterSecretBytes || masterSecretBytes.length === 0) throw new Error(`masterSecret for ${raw.principal} is required`)
     const payments = (raw.payments ?? []).map((payment) => {
       if (typeof payment.mnemonic !== "string" || payment.mnemonic.length === 0) throw new Error(`payment mnemonic for ${raw.principal} is required`)
@@ -70,20 +78,26 @@ export function loadCashierConfig(env: Record<string, string | undefined> = proc
         paymentCoin: enumValue(PaymentCoinSchema, payment.paymentCoin ?? 1),
         paymentEnvironment: enumValue(PaymentEnvironmentSchema, payment.paymentEnvironment ?? 4),
         mnemonic: payment.mnemonic,
+        autoFaucet: payment.autoFaucet === true,
         suiRpcUrl: payment.suiRpcUrl,
         suiFaucetUrl: payment.suiFaucetUrl,
       } satisfies PaymentConfig
     })
     return { principal: raw.principal, masterSecret: masterSecretBytes, payments }
   })
-  const accountSalt = env["CASHIER_ACCOUNT_SALT"] ? decodeEnvBytes("CASHIER_ACCOUNT_SALT", env["CASHIER_ACCOUNT_SALT"]) : new TextEncoder().encode("cashier-account-salt")
+  const accountSalt = config.accountSalt ? decodeConfigBytes("accountSalt", config.accountSalt) : new TextEncoder().encode("cashier-account-salt")
   return {
     accounts,
     accountSalt,
-    insecure: env["CASHIER_INSECURE"] === "true",
-    defaultChainDepositAmount: env["CASHIER_DEFAULT_CHAIN_DEPOSIT_AMOUNT"] ? BigInt(env["CASHIER_DEFAULT_CHAIN_DEPOSIT_AMOUNT"]) : DEFAULT_CHAIN_DEPOSIT_AMOUNT,
-    defaultProviderDepositAmount: env["CASHIER_DEFAULT_PROVIDER_DEPOSIT_AMOUNT"] ? BigInt(env["CASHIER_DEFAULT_PROVIDER_DEPOSIT_AMOUNT"]) : DEFAULT_PROVIDER_DEPOSIT_AMOUNT,
-    accountOriginOverrides: env["CASHIER_ACCOUNT_ORIGIN_OVERRIDES"] ? JSON.parse(env["CASHIER_ACCOUNT_ORIGIN_OVERRIDES"]) as Record<string, string> : {},
-    exchangeOriginOverrides: env["CASHIER_EXCHANGE_ORIGIN_OVERRIDES"] ? JSON.parse(env["CASHIER_EXCHANGE_ORIGIN_OVERRIDES"]) as Record<string, string> : {},
+    defaultChainDepositAmount: config.defaultChainDepositAmount !== undefined ? BigInt(config.defaultChainDepositAmount) : DEFAULT_CHAIN_DEPOSIT_AMOUNT,
+    defaultProviderDepositAmount: config.defaultProviderDepositAmount !== undefined ? BigInt(config.defaultProviderDepositAmount) : DEFAULT_PROVIDER_DEPOSIT_AMOUNT,
+    accountOriginOverrides: config.accountOriginOverrides ?? {},
+    manifestOriginOverrides: config.manifestOriginOverrides ?? {},
   }
+}
+
+export function loadCashierConfig(): CashierConfig {
+  const rawConfig = process.env.CASHIER_CONFIG
+  if (!rawConfig) throw new Error("CASHIER_CONFIG is required")
+  return parseCashierConfig(rawConfig)
 }

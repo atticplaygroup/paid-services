@@ -1,0 +1,8 @@
+FROM oven/bun:1.4.2-alpine
+WORKDIR /app
+COPY testing/package.json testing/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY testing/oci/e2e-oci.test.ts ./oci/e2e-oci.test.ts
+ENV NODE_EXTRA_CA_CERTS=/etc/outproxy-ca/ca.crt
+ENV PULLER_OUTPROXY_URL=http://puller-outproxy.puller-ns.svc.cluster.local:9090
+ENTRYPOINT ["bun", "test", "oci/e2e-oci.test.ts"]

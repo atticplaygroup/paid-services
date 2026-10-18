@@ -1,0 +1,32 @@
+{{- if .Values.s3.retentionRules.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "kvstore.fullname" . }}-s3-retention-rules
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.s3.retentionRules.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 660
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: retention-rules
+              image: "{{ required "s3.retentionRules.image.repository is required" .Values.s3.retentionRules.image.repository }}:{{ (.Values.s3.retentionRules.image.tag | default .Chart.AppVersion) }}"
+              imagePullPolicy: {{ .Values.s3.retentionRules.image.pullPolicy }}
+              env:
+                - { name: AWS_DEFAULT_REGION, value: {{ .Values.s3.retentionRules.region | quote }} }
+                - name: S3_RETENTION_DAYS
+                  value: {{ include "kvstore.retentionDays" . | quote }}
+                - { name: MINIO_ENDPOINT, value: {{ include "kvstore.s3Endpoint" . | quote }} }
+                - { name: S3_SECURE, value: {{ .Values.s3.secure | quote }} }
+                - { name: MINIO_BUCKET, value: {{ .Values.s3.bucket | quote }} }
+                - { name: MINIO_ACCESS_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.s3Secret" . }}, key: accessKey } } }
+                - { name: MINIO_SECRET_KEY, valueFrom: { secretKeyRef: { name: {{ include "kvstore.s3Secret" . }}, key: secretKey } } }
+{{- end }}

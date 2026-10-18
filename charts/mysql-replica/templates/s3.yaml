@@ -1,0 +1,87 @@
+{{- if .Values.s3.seaweedfs.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-replica-s3
+  namespace: {{ .Values.namespace }}
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: {{ .Values.s3.seaweedfs.accessKey | quote }}
+  AWS_SECRET_ACCESS_KEY: {{ .Values.s3.seaweedfs.secretKey | quote }}
+  s3.json: |
+    {"identities":[{"name":"replica","credentials":[{"accessKey":{{ .Values.s3.seaweedfs.accessKey | toJson }},"secretKey":{{ .Values.s3.seaweedfs.secretKey | toJson }}}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-replica-s3
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: mysql-replica-s3
+  ports:
+    - name: s3
+      port: 8333
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-replica-s3
+  namespace: {{ .Values.namespace }}
+spec:
+  serviceName: mysql-replica-s3
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-replica-s3
+  template:
+    metadata:
+      labels:
+        app: mysql-replica-s3
+    spec:
+      containers:
+        - name: seaweedfs
+          image: {{ .Values.s3.seaweedfs.image | quote }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          workingDir: /data
+          args:
+            - server
+            - -dir=/data
+            - -ip=$(POD_IP)
+            - -ip.bind=0.0.0.0
+            - -filer
+            - -s3
+            - -s3.port=8333
+            - -s3.config=/etc/seaweedfs/s3.json
+            - -volume.max=0
+            - -master.volumePreallocate=false
+          ports:
+            - name: s3
+              containerPort: 8333
+          readinessProbe:
+            tcpSocket:
+              port: s3
+            initialDelaySeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: credentials
+              mountPath: /etc/seaweedfs
+              readOnly: true
+      volumes:
+        - name: credentials
+          secret:
+            secretName: mysql-replica-s3
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: {{ .Values.s3.seaweedfs.storageSize }}
+{{- end }}

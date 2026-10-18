@@ -3,4 +3,4 @@ name: mysql-replica
 description: Replica MySQL, ORAS unpacker, and importer
 type: application
 version: 0.1.0
-appVersion: "dev"
+appVersion: "main"

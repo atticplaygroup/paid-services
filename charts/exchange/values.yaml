@@ -1,6 +1,7 @@
 image:
-  repository: oci.example.com/infrastructure
-  tag: dev
+  repository: ghcr.io/atticplaygroup/paid-services/infrastructure
+  # Defaults to Chart.appVersion; CI supplies a commit-specific tag.
+  tag: ""
   pullPolicy: IfNotPresent
 envoyImage:
   repository: envoyproxy/envoy
@@ -12,8 +13,13 @@ accountTtlPrice: "0"
 withdrawRecipientCount: "10"
 withdrawCheckStatusCount: "10"
 suiNetwork: devnet
-tokenSigningSeed: "0x0000000000000000000000000000000000000000000000000000000000000001"
-walletMnemonic: "test test test test test test test test test test test junk"
+identitySecret: "" # existing Secret with tokenSigningSeed and walletMnemonic keys
+tokenSigningSeed: ""
+tokenIssuer: ""
+# Public Ed25519 keys retained while previously issued tokens can still be valid.
+# Each entry is {kid: "...", x: "<base64url-public-key>"}.
+tokenRetiredPublicKeys: []
+walletMnemonic: ""
 messageAuthTimeout: "10s"
 maxDepositEpochGap: "10"
 maxExpirationExtension: "86400"
@@ -39,13 +45,14 @@ meter:
     host: "" # exchange-redis
     address: "" # exchange-redis:6379
   account:
-    validExchangeHosts: []
-    # - exchange:8080
+    trustedIssuers: []
+    # - issuer: https://exchange.example.com
+    #   jwksUrl: https://exchange.example.com/.well-known/jwks.json
     validAudience: ""
     validCoinType: 1
     validCoinEnvironment: 4
     faucetMode: false
-  als:
+  deduction:
     feedbackEnabled: false
     feedbackTTLSeconds: 10
     outproxyAddress: ""

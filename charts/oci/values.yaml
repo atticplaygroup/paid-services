@@ -1,16 +1,21 @@
-# TODO(prod): pin digests; no mutable tags in examples
+# Supply the application image repository and a deployment-owned version.
 ociImage:
-  repository: oci.example.com/oci
-  tag: dev
+  repository: ghcr.io/atticplaygroup/paid-services/oci
+  # Defaults to Chart.appVersion; CI supplies a commit-specific tag.
+  tag: ""
   pullPolicy: IfNotPresent
 fullnameOverride: ""
 env:
   kvstoreAddress: "" # kvstoreAddress: http://envoy:8080
-  alsAddress: "" # alsAddress: meter-als:9193
-  alsLogName: oci_als
+  outproxyAddress: ""
+  outproxyCaSecretName: ""
+  deductionAddress: "" # deductionAddress: meter-deduction:9193
+  deductionLogName: oci_deduction
   accountDomains: []
   deductionAmount: 1
   readOnlyMode: false
+  dpopMasterSecret: ""
+  tlsSecretName: ""
 meter:
   fullnameOverride: meter
   redis:

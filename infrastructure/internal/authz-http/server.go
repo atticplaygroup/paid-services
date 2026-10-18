@@ -151,9 +151,9 @@ func (s *Server) resolve(req *authv3.CheckRequest) (claim, error) {
 	method := strings.TrimSpace(httpReq.GetMethod())
 	res, err := s.dpop.VerifyBearer(authzHdr, method, htu)
 	if err != nil {
-		return claim{}, err
+		return claim{}, fmt.Errorf("%w (expected htu %s)", err, htu)
 	}
-	principal, err := utils.DigestToMultihash(res.JKTBytes)
+	principal, err := utils.PrincipalFromThumbprint(res.JKTBytes)
 	if err != nil {
 		return claim{}, fmt.Errorf("transform multiformat: %w", err)
 	}

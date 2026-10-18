@@ -55,9 +55,9 @@ const (
 	// ExchangeServiceListPaymentMethodsProcedure is the fully-qualified name of the ExchangeService's
 	// ListPaymentMethods RPC.
 	ExchangeServiceListPaymentMethodsProcedure = "/exchange.v1.ExchangeService/ListPaymentMethods"
-	// ExchangeServiceBuyTokenProcedure is the fully-qualified name of the ExchangeService's BuyToken
+	// ExchangeServiceBuyPointsProcedure is the fully-qualified name of the ExchangeService's BuyPoints
 	// RPC.
-	ExchangeServiceBuyTokenProcedure = "/exchange.v1.ExchangeService/BuyToken"
+	ExchangeServiceBuyPointsProcedure = "/exchange.v1.ExchangeService/BuyPoints"
 )
 
 // ExchangeServiceClient is a client for the exchange.v1.ExchangeService service.
@@ -70,7 +70,7 @@ type ExchangeServiceClient interface {
 	BatchMarkWithdraws(context.Context, *connect.Request[v1.BatchMarkWithdrawsRequest]) (*connect.Response[v1.BatchMarkWithdrawsResponse], error)
 	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
 	ListPaymentMethods(context.Context, *connect.Request[v1.ListPaymentMethodsRequest]) (*connect.Response[v1.ListPaymentMethodsResponse], error)
-	BuyToken(context.Context, *connect.Request[v1.BuyTokenRequest]) (*connect.Response[v1.BuyTokenResponse], error)
+	BuyPoints(context.Context, *connect.Request[v1.BuyPointsRequest]) (*connect.Response[v1.BuyPointsResponse], error)
 }
 
 // NewExchangeServiceClient constructs a client for the exchange.v1.ExchangeService service. By
@@ -132,10 +132,10 @@ func NewExchangeServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(exchangeServiceMethods.ByName("ListPaymentMethods")),
 			connect.WithClientOptions(opts...),
 		),
-		buyToken: connect.NewClient[v1.BuyTokenRequest, v1.BuyTokenResponse](
+		buyPoints: connect.NewClient[v1.BuyPointsRequest, v1.BuyPointsResponse](
 			httpClient,
-			baseURL+ExchangeServiceBuyTokenProcedure,
-			connect.WithSchema(exchangeServiceMethods.ByName("BuyToken")),
+			baseURL+ExchangeServiceBuyPointsProcedure,
+			connect.WithSchema(exchangeServiceMethods.ByName("BuyPoints")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -151,7 +151,7 @@ type exchangeServiceClient struct {
 	batchMarkWithdraws    *connect.Client[v1.BatchMarkWithdrawsRequest, v1.BatchMarkWithdrawsResponse]
 	ping                  *connect.Client[v1.PingRequest, v1.PingResponse]
 	listPaymentMethods    *connect.Client[v1.ListPaymentMethodsRequest, v1.ListPaymentMethodsResponse]
-	buyToken              *connect.Client[v1.BuyTokenRequest, v1.BuyTokenResponse]
+	buyPoints             *connect.Client[v1.BuyPointsRequest, v1.BuyPointsResponse]
 }
 
 // GetChallenge calls exchange.v1.ExchangeService.GetChallenge.
@@ -194,9 +194,9 @@ func (c *exchangeServiceClient) ListPaymentMethods(ctx context.Context, req *con
 	return c.listPaymentMethods.CallUnary(ctx, req)
 }
 
-// BuyToken calls exchange.v1.ExchangeService.BuyToken.
-func (c *exchangeServiceClient) BuyToken(ctx context.Context, req *connect.Request[v1.BuyTokenRequest]) (*connect.Response[v1.BuyTokenResponse], error) {
-	return c.buyToken.CallUnary(ctx, req)
+// BuyPoints calls exchange.v1.ExchangeService.BuyPoints.
+func (c *exchangeServiceClient) BuyPoints(ctx context.Context, req *connect.Request[v1.BuyPointsRequest]) (*connect.Response[v1.BuyPointsResponse], error) {
+	return c.buyPoints.CallUnary(ctx, req)
 }
 
 // ExchangeServiceHandler is an implementation of the exchange.v1.ExchangeService service.
@@ -209,7 +209,7 @@ type ExchangeServiceHandler interface {
 	BatchMarkWithdraws(context.Context, *connect.Request[v1.BatchMarkWithdrawsRequest]) (*connect.Response[v1.BatchMarkWithdrawsResponse], error)
 	Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error)
 	ListPaymentMethods(context.Context, *connect.Request[v1.ListPaymentMethodsRequest]) (*connect.Response[v1.ListPaymentMethodsResponse], error)
-	BuyToken(context.Context, *connect.Request[v1.BuyTokenRequest]) (*connect.Response[v1.BuyTokenResponse], error)
+	BuyPoints(context.Context, *connect.Request[v1.BuyPointsRequest]) (*connect.Response[v1.BuyPointsResponse], error)
 }
 
 // NewExchangeServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -267,10 +267,10 @@ func NewExchangeServiceHandler(svc ExchangeServiceHandler, opts ...connect.Handl
 		connect.WithSchema(exchangeServiceMethods.ByName("ListPaymentMethods")),
 		connect.WithHandlerOptions(opts...),
 	)
-	exchangeServiceBuyTokenHandler := connect.NewUnaryHandler(
-		ExchangeServiceBuyTokenProcedure,
-		svc.BuyToken,
-		connect.WithSchema(exchangeServiceMethods.ByName("BuyToken")),
+	exchangeServiceBuyPointsHandler := connect.NewUnaryHandler(
+		ExchangeServiceBuyPointsProcedure,
+		svc.BuyPoints,
+		connect.WithSchema(exchangeServiceMethods.ByName("BuyPoints")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/exchange.v1.ExchangeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -291,8 +291,8 @@ func NewExchangeServiceHandler(svc ExchangeServiceHandler, opts ...connect.Handl
 			exchangeServicePingHandler.ServeHTTP(w, r)
 		case ExchangeServiceListPaymentMethodsProcedure:
 			exchangeServiceListPaymentMethodsHandler.ServeHTTP(w, r)
-		case ExchangeServiceBuyTokenProcedure:
-			exchangeServiceBuyTokenHandler.ServeHTTP(w, r)
+		case ExchangeServiceBuyPointsProcedure:
+			exchangeServiceBuyPointsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -334,6 +334,6 @@ func (UnimplementedExchangeServiceHandler) ListPaymentMethods(context.Context, *
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("exchange.v1.ExchangeService.ListPaymentMethods is not implemented"))
 }
 
-func (UnimplementedExchangeServiceHandler) BuyToken(context.Context, *connect.Request[v1.BuyTokenRequest]) (*connect.Response[v1.BuyTokenResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("exchange.v1.ExchangeService.BuyToken is not implemented"))
+func (UnimplementedExchangeServiceHandler) BuyPoints(context.Context, *connect.Request[v1.BuyPointsRequest]) (*connect.Response[v1.BuyPointsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("exchange.v1.ExchangeService.BuyPoints is not implemented"))
 }

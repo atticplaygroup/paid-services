@@ -1,0 +1,74 @@
+# OCI integration CI values for the production chart.
+fullnameOverride: storage-provider
+image:
+  repository: local/infrastructure
+  tag: dev
+  pullPolicy: IfNotPresent
+envoyImage:
+  repository: envoyproxy/envoy
+  tag: v1.33.0
+  pullPolicy: IfNotPresent
+s3:
+  enabled: true
+  secure: false
+  image:
+    repository: chrislusf/seaweedfs
+    # SeaweedFS 4.48; publisher image pinned by digest.
+    digest: sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    pullPolicy: IfNotPresent
+  endpoint: storage-provider-s3:9000
+  bucket: applications
+  retentionRules:
+    image:
+      repository: local/s3-retention-rules
+      tag: dev
+  accessKey: s3demo
+  secretKey: s3demoSecret
+redisAddress: storage-provider-redis:6379
+env:
+  tlsSecretName: provider-tls
+  validAudience: bahi5mayseakgxo3yvoqqco7lttd7c7mzxvos4f45ffo4jv27fgctrrgc2rv3s
+  validCoinType: '1'
+  validCoinEnvironment: '4'
+  faucetMode: 'true'
+  accountDomains:
+  - account.storage-provider-envoy
+  deductionLogName: s_deduction
+  additionalRequestHeadersToLog:
+  - x-external-request-id
+meter:
+  fullnameOverride: storage-provider-meter
+  redis:
+    enabled: false
+    seedJobEnabled: true
+    host: storage-provider-redis
+    address: storage-provider-redis:6379
+  account:
+    validAudience: bahi5mayseakgxo3yvoqqco7lttd7c7mzxvos4f45ffo4jv27fgctrrgc2rv3s
+    validCoinType: '1'
+    validCoinEnvironment: '4'
+    faucetMode: 'true'
+  deduction:
+    feedbackEnabled: 'true'
+    feedbackTTLSeconds: '10'
+    outproxyAddress: http://oci-provider-outproxy.oci-provider-ns.svc.cluster.local:9090
+  image:
+    repository: local/infrastructure
+    tag: dev
+    pullPolicy: IfNotPresent
+  priceSeed:
+    entries:
+    - key: p:3:1
+      fields:
+        METER_TYPE_GET: '0'
+        METER_TYPE_SET: '0'
+        METER_TYPE_DURATION_MS: '1'
+        METER_TYPE_INGRESS_BYTES: '1'
+        METER_TYPE_EGRESS_BYTES: '1'
+    - key: p:3:3
+      fields:
+        METER_TYPE_GET: '0'
+        METER_TYPE_SET: '0'
+        METER_TYPE_DURATION_MS: '1'
+        METER_TYPE_INGRESS_BYTES: '1'
+        METER_TYPE_EGRESS_BYTES: '1'

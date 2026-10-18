@@ -10,7 +10,7 @@ data:
     REDIS_PORT=6379
     USER_ID_HEADER_NAME=x-user-id
     REQUEST_ID_HEADER_NAME=x-request-id
-    VALID_EXCHANGE_HOSTS={{ .Values.account.validExchangeHosts | join "," }}
+    TRUSTED_ISSUERS={{ .Values.account.trustedIssuers | toJson | quote }}
     VALID_AUDIENCE={{ .Values.account.validAudience }}
     VALID_COIN_TYPE={{ .Values.account.validCoinType }}
     VALID_COIN_ENVIRONMENT={{ .Values.account.validCoinEnvironment }}

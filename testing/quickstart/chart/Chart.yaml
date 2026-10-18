@@ -1,0 +1,18 @@
+apiVersion: v2
+name: quickstart-demo
+description: Standalone PAID quickstart with a shared proxy/cashier party, kvstore provider, and SUI devnet exchange
+type: application
+version: 0.1.0
+dependencies:
+- name: kvstore
+  alias: provider
+  version: 0.1.0
+  repository: file://../../../charts/kvstore
+- name: exchange
+  alias: exchange
+  version: 0.1.0
+  repository: file://../../../charts/exchange
+- name: outproxy-with-faucet
+  alias: proxy
+  version: 0.1.0
+  repository: file://../../../charts/outproxy-with-faucet

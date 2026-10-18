@@ -10,6 +10,8 @@ import "exchange/v1/exchange.proto";
 service CashierService {
   rpc GetAccessToken(GetAccessTokenRequest) returns (GetAccessTokenResponse);
   rpc GetFunds(GetFundsRequest) returns (GetFundsResponse);
+  // Inspect the configured chain wallet without requesting funds.
+  rpc GetChainBalance(GetChainBalanceRequest) returns (GetChainBalanceResponse);
 }
 
 message GetAccessTokenRequest {
@@ -32,9 +34,20 @@ message GetFundsRequest {
 
 message GetFundsResponse {}
 
+message GetChainBalanceRequest {
+  exchange.v1.PaymentCoin preferred_payment_coin = 1 [(buf.validate.field).enum.defined_only = true];
+  exchange.v1.PaymentEnvironment preferred_payment_environment = 2 [(buf.validate.field).enum.defined_only = true];
+}
+
+message GetChainBalanceResponse {
+  string address = 1;
+  // Native coin balance in the smallest unit (MIST for SUI), as a decimal string.
+  string balance = 2;
+}
+
 message ProviderManifest {
   string version = 1 [(buf.validate.field).string.const = "v1"];
-  string id = 2 [(buf.validate.field).string.pattern = "^[a-z2-7]{59}$"];
+  string id = 2 [(buf.validate.field).string.pattern = "^[a-z2-7]{62}$"];
   repeated ProviderExchange exchanges = 3 [(buf.validate.field).repeated = {
     min_items: 1
     max_items: 255
@@ -43,7 +56,7 @@ message ProviderManifest {
 }
 
 message ProviderExchange {
-  string id = 1 [(buf.validate.field).string.pattern = "^[a-z2-7]{59}$"];
+  string id = 1 [(buf.validate.field).string.pattern = "^[a-z2-7]{62}$"];
   repeated string hosts = 2 [(buf.validate.field).repeated = {
     min_items: 1
     max_items: 255

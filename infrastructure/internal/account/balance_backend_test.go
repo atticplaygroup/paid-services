@@ -217,13 +217,11 @@ func TestDepositOrCreateAccountAcceptsValidJwt(t *testing.T) {
 		t.Fatalf("initialize keyfunc: %v", err)
 	}
 	srv.jwtValidator = &jwtValidator{
-		audience:              []string{validAudience("bafkreigcp47gwekkttqujhtwtasbqjazquza4onx3pbd5du7upw2pic35e")},
-		validExchanges:        []string{jwksServer.URL},
-		validIssuers:          []string{"https://trusted.example"},
-		enableIssuerWhitelist: true,
-		coinType:              epb.CoinType(1),
-		coinEnvironment:       epb.CoinEnvironment(4),
-		keyFunc:               keyFunc,
+		audience:        []string{validAudience("bahi5maysedbh6ptlcffjzyketz3jqjayeqmykmqohg35xqr6r2p2h3nhubn6s")},
+		issuers:         map[string]keyfunc.Keyfunc{"https://trusted.example": keyFunc},
+		coinType:        epb.CoinType(1),
+		coinEnvironment: epb.CoinEnvironment(4),
+		redeemer:        srv.jwtRedeemer,
 	}
 	claims := &DepositJwtClaims{
 		RegisteredClaims: &jwt.RegisteredClaims{
@@ -235,7 +233,6 @@ func TestDepositOrCreateAccountAcceptsValidJwt(t *testing.T) {
 			ID:        "valid-token-id",
 		},
 		Quantity:        123,
-		Usage:           epb.JwtUsage_JWT_USAGE_CREATE_SESSION,
 		CoinType:        epb.CoinType(1),
 		CoinEnvironment: epb.CoinEnvironment(4),
 	}
@@ -303,13 +300,11 @@ func TestDepositOrCreateAccountRejectsUnknownExchangeJwt(t *testing.T) {
 		t.Fatalf("initialize keyfunc: %v", err)
 	}
 	srv.jwtValidator = &jwtValidator{
-		audience:              []string{validAudience("bafkreigcp47gwekkttqujhtwtasbqjazquza4onx3pbd5du7upw2pic35e")},
-		validExchanges:        []string{jwksServer.URL},
-		validIssuers:          []string{"https://trusted.example"},
-		enableIssuerWhitelist: true,
-		coinType:              epb.CoinType(1),
-		coinEnvironment:       epb.CoinEnvironment(4),
-		keyFunc:               keyFunc,
+		audience:        []string{validAudience("bahi5maysedbh6ptlcffjzyketz3jqjayeqmykmqohg35xqr6r2p2h3nhubn6s")},
+		issuers:         map[string]keyfunc.Keyfunc{"https://trusted.example": keyFunc},
+		coinType:        epb.CoinType(1),
+		coinEnvironment: epb.CoinEnvironment(4),
+		redeemer:        srv.jwtRedeemer,
 	}
 	claims := &DepositJwtClaims{
 		RegisteredClaims: &jwt.RegisteredClaims{
@@ -321,7 +316,6 @@ func TestDepositOrCreateAccountRejectsUnknownExchangeJwt(t *testing.T) {
 			ID:        "unknown-exchange-token",
 		},
 		Quantity:        123,
-		Usage:           epb.JwtUsage_JWT_USAGE_CREATE_SESSION,
 		CoinType:        epb.CoinType(1),
 		CoinEnvironment: epb.CoinEnvironment(4),
 	}

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: meter
-description: Reusable PAID metering stack (account, ALS, authz-http) with optional Redis and price seeding.
+description: Reusable PAID metering stack (account, Deduction, authz-http) with optional Redis and price seeding.
 type: application
 version: 0.1.0
-appVersion: "dev"
+appVersion: "main"

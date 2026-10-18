@@ -155,7 +155,7 @@ func (s *Server) Deposit(ctx context.Context, connectReq *connect.Request[pb.Dep
 			UpsertAccountParams: db.UpsertAccountParams{
 				Principal: session.UserId,
 				Ttl: pgtype.Interval{
-					Microseconds: int64(req.GetTtl().Seconds) * 1000,
+					Microseconds: req.GetTtl().AsDuration().Microseconds(),
 					Valid:        true,
 				},
 				Privilege: "user",

@@ -18,8 +18,9 @@ type AuthConfig struct {
 type sessionKey struct{}
 
 type Session struct {
-	UserId    string
-	RequestId string
+	UserId            string
+	RequestId         string
+	ExternalRequestId string
 }
 
 func NewAuthInterceptor(config *AuthConfig, unprotectedApis ...string) connect.UnaryInterceptorFunc {
@@ -39,15 +40,11 @@ func NewAuthInterceptor(config *AuthConfig, unprotectedApis ...string) connect.U
 			if requestId == "" {
 				return nil, status.Error(codes.InvalidArgument, "empty request_id")
 			}
-			// Prefer x-external-request-id when provided by upstream
-			if config.ExternalRequestIdHeaderName != "" {
-				if extId := req.Header().Get(config.ExternalRequestIdHeaderName); extId != "" {
-					requestId = extId
-				}
-			}
+			externalRequestId := req.Header().Get(config.ExternalRequestIdHeaderName)
 			return next(context.WithValue(ctx, sessionKey{}, &Session{
-				UserId:    userId,
-				RequestId: requestId,
+				UserId:            userId,
+				RequestId:         requestId,
+				ExternalRequestId: externalRequestId,
 			}), req)
 		}
 	}

@@ -3,4 +3,4 @@ name: mysql-proposer
 description: Proposer MySQL, exporter, ORAS transport, and manifest publisher
 type: application
 version: 0.1.0
-appVersion: "dev"
+appVersion: "main"

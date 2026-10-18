@@ -25,6 +25,8 @@ type Config struct {
 	TokenSigningSeed         string `mapstructure:"TOKEN_SIGNING_SEED"`
 	TokenSigningPrivateKey   ed25519.PrivateKey
 	TokenSigningKeyId        string
+	TokenIssuer              string `mapstructure:"TOKEN_ISSUER"`
+	TokenRetiredPublicKeys   string `mapstructure:"TOKEN_RETIRED_PUBLIC_KEYS"`
 
 	TokenSigningPublic ed25519.PublicKey
 
@@ -42,7 +44,7 @@ type Config struct {
 	UserIdHeaderName    string `mapstructure:"USER_ID_HEADER_NAME"`
 	RequestIdHeaderName string `mapstructure:"REQUEST_ID_HEADER_NAME"`
 
-	// Stamped onto BuyToken JWTs; must match kvstore VALID_COIN_*.
+	// Stamped onto BuyPoints JWTs; must match kvstore VALID_COIN_*.
 	TokenCoinType        int64 `mapstructure:"TOKEN_COIN_TYPE"`
 	TokenCoinEnvironment int64 `mapstructure:"TOKEN_COIN_ENVIRONMENT"`
 }
@@ -57,6 +59,9 @@ func LoadConfig(path string) (config Config) {
 	}
 	viper.SetConfigType("env")
 	viper.AutomaticEnv()
+	for _, key := range []string{"TOKEN_SIGNING_SEED", "WALLET_MNEMONIC"} {
+		_ = viper.BindEnv(key)
+	}
 	viper.SetDefault("GRPC_PORT", 8080)
 	viper.SetDefault("LISTEN_ADDRESS", "0.0.0.0")
 	viper.SetDefault("USER_ID_HEADER_NAME", "x-user-id")
@@ -73,10 +78,10 @@ func LoadConfig(path string) (config Config) {
 
 	seed, err := utils.HexToBytes32(config.TokenSigningSeed)
 	if err != nil {
-		log.Fatalf("parse TokenSigningSeed %s: %v", config.TokenSigningSeed, err)
+		log.Fatal("TOKEN_SIGNING_SEED must be a 32-byte hex string beginning with 0x")
 	}
 	if len(seed) != ed25519.SeedSize {
-		log.Fatalf("expect seed to have len %d but got %d: %v", ed25519.SeedSize, len(seed), seed)
+		log.Fatalf("expect signing seed to have len %d but got %d", ed25519.SeedSize, len(seed))
 	}
 	config.TokenSigningPrivateKey = ed25519.NewKeyFromSeed(seed)
 	config.TokenSigningPublic = config.TokenSigningPrivateKey.Public().(ed25519.PublicKey)
@@ -85,7 +90,13 @@ func LoadConfig(path string) (config Config) {
 		log.Fatalf("token signing key id: %v", err)
 	}
 	config.TokenSigningKeyId = tokenSigningKeyCid.String()
-	fmt.Printf("issuer: %s\n", config.TokenSigningKeyId)
+	if config.TokenIssuer == "" {
+		log.Fatal("TOKEN_ISSUER must be a stable HTTPS URL")
+	}
+	if !strings.HasPrefix(config.TokenIssuer, "https://") {
+		log.Fatalf("TOKEN_ISSUER must use HTTPS: %s", config.TokenIssuer)
+	}
+	fmt.Printf("issuer: %s, signing key: %s\n", config.TokenIssuer, config.TokenSigningKeyId)
 
 	signer, err := signer.NewSignertWithMnemonic(config.WalletMnemonic)
 	if err != nil {

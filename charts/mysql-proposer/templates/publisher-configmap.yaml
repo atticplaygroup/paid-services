@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-proposer-publisher
+  namespace: {{ .Values.namespace }}
+data:
+  crontab: |
+    {{- if not .Values.packer.suspend }}
+    {{ .Values.packer.schedule }} PUBLISH_MODE=baseline /usr/local/bin/publish.sh
+    {{- end }}
+    {{- if not .Values.packer.deltaSuspend }}
+    {{ .Values.packer.deltaSchedule }} PUBLISH_MODE=delta /usr/local/bin/publish.sh
+    {{- end }}
