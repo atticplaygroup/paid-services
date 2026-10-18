@@ -17,6 +17,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/lifecycle"
 	"github.com/ory/dockertest/v3"
+	"github.com/ory/dockertest/v3/docker"
 )
 
 // Exercise the real S3 backend, including tagging that the in-memory fake omits.
@@ -26,13 +27,26 @@ func TestSeaweedFSS3(t *testing.T) {
 		t.Fatal(err)
 	}
 	pool.MaxWait = 90 * time.Second
+	const repository = "chrislusf/seaweedfs"
+	const digest = "sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d"
+	const tag = "4.48@" + digest
+	// RunWithOptions treats Tag as a pull tag, which cannot contain @digest.
+	// Pull by digest first so its image lookup succeeds on a fresh runner.
+	if _, err := pool.Client.InspectImage(repository + ":" + tag); err != nil {
+		if err := pool.Client.PullImage(docker.PullImageOptions{
+			Repository: repository,
+			Tag:        digest,
+		}, docker.AuthConfiguration{}); err != nil {
+			t.Fatalf("pull pinned SeaweedFS image: %v", err)
+		}
+	}
 	config := filepath.Join(t.TempDir(), "s3.json")
 	if err := os.WriteFile(config, []byte(`{"identities":[{"name":"test","credentials":[{"accessKey":"test","secretKey":"testtest"}],"actions":["Admin","Read","Write","List","Tagging"]}]}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
-		Repository:   "chrislusf/seaweedfs",
-		Tag:          "4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d",
+		Repository:   repository,
+		Tag:          tag,
 		Cmd:          []string{"mini", "-dir=/data", "-s3.port=9000", "-s3.config=/etc/seaweedfs/s3.json", "-webdav=false", "-master.telemetry=false"},
 		Mounts:       []string{config + ":/etc/seaweedfs/s3.json:ro"},
 		ExposedPorts: []string{"9000/tcp", "23646/tcp"},
