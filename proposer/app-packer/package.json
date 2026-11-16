@@ -1,0 +1,8 @@
+{
+  "name": "@paid/app-packer",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./papp": "./papp.ts"
+  }
+}

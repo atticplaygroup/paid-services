@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "index.name" . }}-index
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "index.name" . }}-index }
+  template:
+    metadata:
+      labels: { app: {{ include "index.name" . }}-index }
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: index
+          image: "{{ required "index.indexImage.repository is required" .Values.indexImage.repository }}:{{ (.Values.indexImage.tag | default .Chart.AppVersion) }}"
+          imagePullPolicy: {{ .Values.indexImage.pullPolicy }}
+          command: ["/index"]
+          env:
+            - name: ENABLED_SCORERS
+              value: {{ toJson .Values.env.enabledScorers | quote }}
+            - name: MYSQL_DSN
+              value: {{ required "index.env.mysqlDsn is required" .Values.env.mysqlDsn | quote }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          ports:
+            - { name: http, containerPort: 3000 }
+          {{- if .Values.env.outproxyCaSecretName }}
+          volumeMounts:
+            - { name: outproxy-ca, mountPath: /etc/outproxy-ca, readOnly: true }
+          {{- end }}
+      {{- if .Values.env.outproxyCaSecretName }}
+      volumes:
+        - name: outproxy-ca
+          secret:
+            secretName: {{ .Values.env.outproxyCaSecretName }}
+            items:
+              - { key: ca.crt, path: ca.crt }
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "index.name" . }}-index
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "index.name" . }}-index }
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+---

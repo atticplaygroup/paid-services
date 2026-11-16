@@ -18,7 +18,8 @@
     "hono": "^4.12.32",
     "node-forge": "^1.4.0",
     "typescript": "^5.9.3",
-    "multiformats": "^14.0.5"
+    "multiformats": "^14.0.5",
+    "@paid/client-auth": "file:../client-auth"
   },
   "devDependencies": {
     "@types/bun": "latest",

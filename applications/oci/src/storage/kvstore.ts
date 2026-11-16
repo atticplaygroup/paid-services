@@ -9,7 +9,6 @@ import {
 } from "../proto/gen/es/kvstore/v1/kvstore_pb.js"
 import { CID } from "multiformats/cid"
 import { create } from "multiformats/hashes/digest"
-import { generateProof } from "dpop"
 import { AsyncLocalStorage } from "node:async_hooks"
 import type { Interceptor } from "@connectrpc/connect"
 
@@ -35,28 +34,6 @@ function requestIdentityInterceptor(): Interceptor {
   }
 }
 
-function createDpopFetch(baseUrl: string, keypair: CryptoKeyPair): FetchFn {
-  return async (input, init) => {
-    const url = typeof input === "string" ? input : (input instanceof URL ? input.href : input.url)
-    const u = new URL(url, baseUrl)
-    u.search = ""
-    u.hash = ""
-    const htu = u.href.replace(/\/$/, "")
-    const method = (init?.method ?? "POST").toUpperCase()
-    const proof = await generateProof(keypair, htu, method)
-    const headers = new Headers(init?.headers)
-    headers.set("Authorization", `Bearer ${proof}`)
-    return globalThis.fetch(input, { ...init, headers })
-  }
-}
-
-export function createProxiedFetch(outproxyAddress: string): FetchFn {
-  return async (input, init) => {
-    const headers = new Headers(init?.headers)
-    return globalThis.fetch(input, { ...init, headers, proxy: outproxyAddress } as any)
-  }
-}
-
 export async function principalFromJwk(jwk: JsonWebKey): Promise<string> {
   const canonical = JSON.stringify({ crv: jwk.crv, kty: jwk.kty, x: jwk.x, y: jwk.y })
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)))
@@ -65,31 +42,21 @@ export async function principalFromJwk(jwk: JsonWebKey): Promise<string> {
 
 export class KvstoreClient {
   private baseUrl: string
-  private dpopKeypair?: CryptoKeyPair
-  private outproxyAddress?: string
-  private lastAnchor?: Anchor
+  private pushKeypair?: CryptoKeyPair
 
-  constructor(baseUrl: string, dpopKeypair?: CryptoKeyPair, outproxyAddress?: string, private fetchOverride?: FetchFn) {
+  constructor(baseUrl: string, pushKeypair?: CryptoKeyPair, private fetchFn?: FetchFn) {
     this.baseUrl = baseUrl
-    this.dpopKeypair = dpopKeypair
-    this.outproxyAddress = outproxyAddress
+    this.pushKeypair = pushKeypair
   }
 
   private createClient(): Client<typeof MeteredStorageService> {
-    const transportOptions: any = {
+    const transport: Transport = createConnectTransport({
       baseUrl: this.baseUrl,
       useBinaryFormat: true,
-      fetch: this.fetchOverride,
+      // Connect uses standard fetch when undefined; Bun also declares an unused preconnect helper.
+      fetch: this.fetchFn as typeof fetch | undefined,
       interceptors: [requestIdentityInterceptor()],
-    }
-    if (this.fetchOverride) {
-      transportOptions.fetch = this.fetchOverride
-    } else if (this.outproxyAddress) {
-      transportOptions.fetch = createProxiedFetch(this.outproxyAddress)
-    } else if (this.dpopKeypair) {
-      transportOptions.fetch = createDpopFetch(this.baseUrl, this.dpopKeypair)
-    }
-    const transport: Transport = createConnectTransport(transportOptions)
+    })
     return createClient(MeteredStorageService, transport)
   }
 
@@ -140,8 +107,8 @@ export class KvstoreClient {
   }
 
   private async signAnchor(input: { key: string; cid: string; revision: bigint }): Promise<Anchor> {
-    if (!this.dpopKeypair) throw new Error("DPOP_PRIVATE_KEY is required to sign protected value anchors")
-    const ownerJwk = await crypto.subtle.exportKey("jwk", this.dpopKeypair.publicKey)
+    if (!this.pushKeypair) throw new Error("DPOP_PRIVATE_KEY is required to sign protected value anchors")
+    const ownerJwk = await crypto.subtle.exportKey("jwk", this.pushKeypair.publicKey)
     delete ownerJwk.key_ops
     delete ownerJwk.ext
     const owner = await principalFromJwk(ownerJwk)
@@ -151,7 +118,7 @@ export class KvstoreClient {
     const encodedPayload = encodeBase64Url(new TextEncoder().encode(canonical))
     const signature = await crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
-      this.dpopKeypair.privateKey,
+      this.pushKeypair.privateKey,
       encodeSigningInput(`${header}.${encodedPayload}`),
     )
     const anchor = {
@@ -162,7 +129,6 @@ export class KvstoreClient {
       ownerJwk: JSON.stringify(ownerJwk),
       signature: `${header}.${encodedPayload}.${encodeBase64Url(new Uint8Array(signature))}`,
     } as Anchor
-    this.lastAnchor = anchor
     return anchor
   }
 

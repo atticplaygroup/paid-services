@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: echo-server, namespace: index-ns}
+spec:
+  selector: {matchLabels: {app: echo-server}}
+  template:
+    metadata: {labels: {app: echo-server}}
+    spec:
+      containers:
+        - name: echo
+          image: local/browser-test-client:dev
+          command: [bun, run, examples/echo-server/server.ts]
+          ports: [{containerPort: 3000}]
+          readinessProbe:
+            tcpSocket: {port: 3000}
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata: {name: echo-server, namespace: index-ns}
+spec:
+  selector: {app: echo-server}
+  ports: [{port: 3000}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: echo-envoy, namespace: index-ns}
+spec:
+  selector: {matchLabels: {app: echo-envoy}}
+  template:
+    metadata: {labels: {app: echo-envoy}}
+    spec:
+      containers:
+        - name: envoy
+          image: envoyproxy/envoy:v1.38.3
+          args: [-c, /etc/envoy/envoy.yaml]
+          ports: [{containerPort: 8080}]
+          readinessProbe:
+            tcpSocket: {port: 8080}
+            periodSeconds: 2
+          volumeMounts: [{name: config, mountPath: /etc/envoy}]
+      volumes:
+        - name: config
+          configMap: {name: echo-envoy-config}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: echo-envoy, namespace: index-ns}
+spec:
+  selector: {app: echo-envoy}
+  ports: [{port: 8080}]

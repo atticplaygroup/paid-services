@@ -18,6 +18,13 @@ plugins:
     opt:
       - target=ts
       - import_extension=js
+  - remote: buf.build/bufbuild/es
+    out: applications/router/src/proto/gen/es
+    include_imports: true
+    opt:
+      - target=ts
+      - import_extension=js
+      - json_types=true
   - remote: buf.build/grpc/go:v1.5.1
     out: infrastructure/pkg/proto/gen/go
     include_imports: true

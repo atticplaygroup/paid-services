@@ -1,0 +1,12 @@
+query CurrentUser {
+  currentUser {
+    id
+    username
+    bio
+    image
+  }
+}
+
+query CheckUsername($username: String!) {
+  checkUsername(username: $username)
+}

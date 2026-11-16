@@ -1,0 +1,28 @@
+namespace: puller-ns
+fullnameOverride: realworld-replica
+importer:
+  application: realworld
+  storageMode: filesystem
+  suspend: true
+s3:
+  seaweedfs:
+    enabled: false
+mysqlHttp:
+  enabled: true
+  adminDsn: root:root@tcp(mysql-replica:3306)/
+  access:
+    schemas: [realworld]
+  queryTimeout: 30s
+meter:
+  enabled: true
+  fullnameOverride: realworld-meter
+  redis:
+    host: realworld-redis
+    address: realworld-redis:6379
+  account:
+    validAudience: realworld-replica
+    faucetMode: true
+  priceSeed:
+    entries:
+      - key: p:mysql
+        fields: {METER_TYPE_DURATION_MS: '1', METER_TYPE_INGRESS_BYTES: '1', METER_TYPE_EGRESS_BYTES: '1'}

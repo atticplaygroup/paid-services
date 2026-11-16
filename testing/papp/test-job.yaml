@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata: {name: e2e-papp-framework, namespace: puller-ns}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tests
+          image: local/papp-framework:dev
+          env:
+            - {name: PAPP_BROWSER, value: chrome}
+          command: [bun, test, --timeout, "360000", testing/papp]
+          volumeMounts:
+            - {name: keys, mountPath: /etc/dpop-keys, readOnly: true}
+            - {name: fixture, mountPath: /etc/routing, readOnly: true}
+            - {name: shm, mountPath: /dev/shm}
+      volumes:
+        - name: keys
+          secret: {secretName: e2e-dpop-keys}
+        - name: fixture
+          configMap: {name: routing-fixture}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 256Mi}

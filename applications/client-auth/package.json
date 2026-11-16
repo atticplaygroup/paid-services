@@ -1,0 +1,6 @@
+{
+  "name": "@paid/client-auth",
+  "type": "module",
+  "exports": "./src/lib.ts",
+  "dependencies": { "dpop": "^2.1.1" }
+}

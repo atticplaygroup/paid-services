@@ -15,3 +15,10 @@ charts/*/charts/*.tgz
 
 testing/quickstart/.kubeconfig
 .release/
+user-server.sqlite*
+
+examples/realworld-papp/frontend/dist/
+examples/realworld-papp/frontend/.next/
+
+examples/realworld-papp/baseapp/.next/
+examples/realworld-papp/baseapp/tsconfig.tsbuildinfo

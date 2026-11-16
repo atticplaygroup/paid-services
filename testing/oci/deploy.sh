@@ -8,12 +8,8 @@ source testing/shared/image-env.sh
 [[ $OCI_IMAGE_TAG =~ ^[a-zA-Z0-9_.-]+$ ]] || { echo 'Invalid OCI_IMAGE_TAG' >&2; exit 1; }
 OCI_IMAGE_DIR=$(mktemp -d)
 trap 'rm -rf "$OCI_IMAGE_DIR"' EXIT
-OCI_NODE_PLATFORM="linux/$(docker version --format '{{.Server.Arch}}')"
 for image in "$IMAGE_PREFIX/s3-retention-rules:$OCI_IMAGE_TAG" "$IMAGE_PREFIX/infrastructure:$OCI_IMAGE_TAG" "$IMAGE_PREFIX/outproxy:$OCI_IMAGE_TAG" "$IMAGE_PREFIX/oci:$OCI_IMAGE_TAG" chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d "$IMAGE_PREFIX/oci-test-client:$OCI_IMAGE_TAG" envoyproxy/envoy:v1.33.0 valkey/valkey:8-alpine; do
-  docker image inspect "$image" >/dev/null 2>&1 || docker pull "$image"
-  # Exclude unpulled platforms retained by Docker's containerd image store.
-  docker save --platform "$OCI_NODE_PLATFORM" -o "$OCI_IMAGE_DIR/image.tar" "$image"
-  kind load image-archive "$OCI_IMAGE_DIR/image.tar" --name "$CLUSTER_NAME"
+  bash testing/shared/load-image.sh "$image"
 done
 kubectl apply -f testing/oci/namespaces.yaml
 bash testing/oci/setup-tls.sh

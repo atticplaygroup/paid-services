@@ -58,6 +58,11 @@ meter:
     pullPolicy: IfNotPresent
   priceSeed:
     entries:
+    - key: p:s3
+      fields:
+        METER_TYPE_DURATION_MS: '1'
+        METER_TYPE_INGRESS_BYTES: '1'
+        METER_TYPE_EGRESS_BYTES: '1'
     - key: p:3:1
       fields:
         METER_TYPE_GET: '0'

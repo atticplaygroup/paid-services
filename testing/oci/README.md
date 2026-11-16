@@ -96,3 +96,10 @@ sequenceDiagram
 ```
 
 Alternatively, the puller can run its own OCI application or use an OCI library in its browser to access the storage provider directly. This avoids relying on a separate OCI provider and paying its metering charges, but requires the puller to manage the application and storage access.
+
+The E2E suite also downloads the published blob with native AWS CLI through
+`puller-outproxy` and the storage provider's Envoy, using `--no-sign-request`.
+It funds the puller at the storage provider, checks a balance deduction, verifies
+listing, HEAD and range reads, and confirms PUT/DELETE cannot change the object.
+Unauthenticated and unfunded reads are rejected. The test client image includes
+AWS CLI; no backend S3 credentials are provided to it.

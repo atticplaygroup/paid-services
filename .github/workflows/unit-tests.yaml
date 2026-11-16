@@ -12,12 +12,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        application: [cashier, outproxy, oci]
+        application: [cashier, outproxy, oci, router, client-auth]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+      - name: Install shared client-auth dependencies
+        if: matrix.application == 'outproxy'
+        working-directory: applications/client-auth
+        run: bun install --frozen-lockfile
       - name: Run application unit tests
         working-directory: applications/${{ matrix.application }}
         run: |

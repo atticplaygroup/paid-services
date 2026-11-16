@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata: {name: e2e-routing, namespace: puller-ns}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tests
+          image: local/routing-test-client:dev
+          command: [bun, test, --timeout, '60000', routing/e2e-routing.test.ts, index/e2e-index.test.ts]
+          env:
+            - {name: NODE_EXTRA_CA_CERTS, value: /etc/outproxy-ca/ca.crt}
+            - {name: PULLER_OUTPROXY_URL, value: 'http://puller-outproxy.puller-ns.svc.cluster.local:9090'}
+          volumeMounts:
+            - {name: keys, mountPath: /etc/dpop-keys, readOnly: true}
+            - {name: fixture, mountPath: /etc/routing, readOnly: true}
+            - {name: ca, mountPath: /etc/outproxy-ca, readOnly: true}
+      volumes:
+        - name: keys
+          secret: {secretName: e2e-dpop-keys}
+        - name: fixture
+          configMap: {name: routing-fixture}
+        - name: ca
+          secret:
+            secretName: outproxy-tls
+            items: [{key: ca.crt, path: ca.crt}]

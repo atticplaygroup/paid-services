@@ -280,7 +280,7 @@ spec:
             - name: TLS_CA_CERT_PATH
               value: /etc/outproxy/tls/ca.crt
             - name: DPOP_MASTER_SECRET
-              value: "legal winner thank year wave sausage worth useful legal winner thank yellow"
+              value: "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"
           volumeMounts:
             - name: outproxy-tls
               mountPath: /etc/outproxy/tls

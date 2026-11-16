@@ -1,0 +1,17 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: realworld-exchange-migrate
+  namespace: realworld-payments
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 120
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: local/infrastructure:dev
+          command: [/exchange-migrate]
+          env:
+            - {name: DATABASE_URL, value: 'postgres://postgres:realworld-test@realworld-postgres:5432/paid?sslmode=disable'}

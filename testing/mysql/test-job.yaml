@@ -69,7 +69,7 @@ metadata:
   namespace: proposer-ns
 spec:
   backoffLimit: 0
-  activeDeadlineSeconds: 900
+  activeDeadlineSeconds: 1200
   template:
     spec:
       serviceAccountName: mysql-e2e
@@ -78,7 +78,7 @@ spec:
         - name: tests
           image: local/mysql-test-client:dev
           imagePullPolicy: IfNotPresent
-          command: [bash, -c, "mkdir -p /var/lib/proposer-binlogs/publication-tests; exec bun test --bail mysql/e2e-mysql.test.ts"]
+          command: [bash, -c, "mkdir -p /var/lib/proposer-binlogs/publication-tests; bun test --bail mysql/e2e-mysql.test.ts && exec bun test --bail --timeout 30000 mysql/e2e-sql.test.ts"]
           env:
             - name: TMPDIR
               value: /var/lib/proposer-binlogs/publication-tests

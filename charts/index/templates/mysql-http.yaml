@@ -1,0 +1,1 @@
+{{ include "mysql-http.workload" (dict "root" . "adminDsn" .Values.mysqlHttp.adminDsn) }}

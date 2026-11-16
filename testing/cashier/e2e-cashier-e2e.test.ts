@@ -76,7 +76,7 @@ async function getBalance(port: number, accessProof: string) {
   return result.balance
 }
 
-describe("Feature 5: full cashier e2e", () => {
+describe("Full cashier e2e", () => {
   let portForward: ReturnType<typeof Bun.spawn> | undefined
   const balanceForwards: ReturnType<typeof Bun.spawn>[] = []
   let cashierForward: ReturnType<typeof Bun.spawn> | undefined
@@ -180,7 +180,7 @@ describe("Feature 5: full cashier e2e", () => {
   }, 60_000)
 
   it("stores and retrieves a value through outproxy", async () => {
-    const value = new TextEncoder().encode("feature 5 full e2e")
+    const value = new TextEncoder().encode("cashier full e2e")
     const key = CID.createV1(0x55, await sha256.digest(value)).toString()
     const createdRequest = toBinary(CreateCASValueRequestSchema, create(CreateCASValueRequestSchema, {
       storageBackend: StorageBackend.BLOB_STORAGE,

@@ -53,7 +53,7 @@ const config: CashierConfig = {
 
 let providerManifestId: string | undefined
 
-async function signedManifestParts(exchangeOrigin = "http://exchange.example:8088", environment = PaymentEnvironment.LOCALNET) {
+async function signedManifestParts(exchangeOrigin = "http://exchange.example:8088", environment = PaymentEnvironment.LOCALNET, coin = PaymentCoin.SUI) {
   const seed = new Uint8Array(32).fill(9)
   const keypair = await importDpopKeyPair(await importDpopSeed(seed))
   const publicJwk = await crypto.subtle.exportKey("jwk", keypair.publicKey)
@@ -61,7 +61,7 @@ async function signedManifestParts(exchangeOrigin = "http://exchange.example:808
     version: "v1",
     exchanges: [{
       hosts: [exchangeOrigin],
-      paymentCoin: PaymentCoin.SUI,
+      paymentCoin: coin,
       paymentEnvironment: environment,
     }],
   }
@@ -89,8 +89,8 @@ async function signedManifestParts(exchangeOrigin = "http://exchange.example:808
   }
 }
 
-async function signedProviderManifest(exchangeOrigin = "http://exchange.example:8088", environment = PaymentEnvironment.LOCALNET) {
-  const manifest = await signedManifestParts(exchangeOrigin, environment)
+async function signedProviderManifest(exchangeOrigin = "http://exchange.example:8088", environment = PaymentEnvironment.LOCALNET, coin = PaymentCoin.SUI) {
+  const manifest = await signedManifestParts(exchangeOrigin, environment, coin)
   return JSON.stringify({ version: manifest.version, id: manifest.id, exchanges: manifest.exchanges, signature: `${manifest.header}.${manifest.payload}.${manifest.signature}` })
 }
 
@@ -161,8 +161,7 @@ describe("cashier provider manifest validation", () => {
     { requestOrigin: "https://provider.example:8443", overrideHost: undefined },
   ])("fetches a signed manifest for %j", async ({ requestOrigin, overrideHost }) => {
     const expectedOrigin = overrideHost ? "https://manifest.example:8443" : requestOrigin
-    const manifest = JSON.parse(await signedProviderManifest())
-    manifest.exchanges[0].paymentCoin = PaymentCoin.UNSPECIFIED
+    const manifest = JSON.parse(await signedProviderManifest(undefined, undefined, PaymentCoin.UNSPECIFIED))
     const urls: string[] = []
     const fetch: CashierDeps["fetch"] = async (input) => {
       const url = input instanceof URL ? input.href : String(input)
@@ -175,6 +174,20 @@ describe("cashier provider manifest validation", () => {
     const response = await post(app, "/cashier.v1.CashierService/GetAccessToken", { htu: `${requestOrigin}/path`, htm: "GET" }, { "x-user-id": USER_ID, "x-request-id": REQUEST_ID })
     expect(await response.text()).toContain("no exchange supported by cashier")
     expect(urls).toContain(`${expectedOrigin}/.well-known/paid_provider_manifest.json`)
+  })
+
+  it("rejects unsigned changes to the exchange destination before funding", async () => {
+    const manifest = JSON.parse(await signedProviderManifest())
+    manifest.exchanges[0].hosts = ["https://attacker.example"]
+    const fetch: CashierDeps["fetch"] = async (input) => {
+      const url = String(input)
+      if (url.endsWith("/GetBalance")) return new Response(toBinary(GetBalanceResponseSchema, create(GetBalanceResponseSchema, { balance: 0n })), { headers: { "Content-Type": "application/proto" } })
+      if (url.includes("/.well-known/paid_provider_manifest.json")) return Response.json(manifest)
+      throw new Error(`Funding must not be attempted: ${url}`)
+    }
+    const cashier = new Cashier(config, { fetch })
+    await expect(cashier.getAccessToken({ htu: "http://provider.example/path", htm: "GET", preferredPaymentCoin: 1, preferredPaymentEnvironment: 4 }, USER_ID))
+      .rejects.toThrow("provider manifest does not match signed payload")
   })
 
   it("rejects a tampered manifest signature", async () => {
@@ -196,9 +209,8 @@ describe("cashier provider manifest validation", () => {
   })
 
   it("rejects a provider with no exchange supported by cashier", async () => {
-    const manifest = await signedProviderManifest()
+    const manifest = await signedProviderManifest(undefined, undefined, PaymentCoin.UNSPECIFIED)
     const parsed = JSON.parse(manifest)
-    parsed.exchanges[0].paymentCoin = PaymentCoin.UNSPECIFIED
     const fetch: CashierDeps["fetch"] = async (input) => {
       const url = input instanceof URL ? input.href : String(input)
       if (url.endsWith("/GetBalance")) {
@@ -360,10 +372,12 @@ describe("cashier provider funding flow", () => {
         return { Transaction: { digest } }
       },
     })
-    const app = createCashierApp(config, { fetch, suiClientFactory })
+    const deposits: { provider: string; amount: bigint }[] = []
+    const app = createCashierApp(config, { fetch, suiClientFactory, onProviderDeposit: event => { deposits.push(event) } })
     const response = await post(app, "/cashier.v1.CashierService/GetAccessToken", { htu: "http://provider.example/path", htm: "GET" }, { "x-user-id": USER_ID, "x-request-id": REQUEST_ID })
     if (response.status !== 200) console.log("response", response.status, await response.text())
     expect(response.status).toBe(200)
+    expect(deposits).toEqual([{ provider: providerManifestId!, amount: 10n }])
   })
 
   it("caps the purchased amount at the exchange balance", async () => {
@@ -432,6 +446,14 @@ describe("cashier exchange deposit", () => {
         if (balance === undefined) throw new Error(`unexpected balance URL: ${url}`)
         const effectiveBalance = depositCompleted && url.includes("exchange.example") ? 20n : balance
         return new Response(toBinary(GetBalanceResponseSchema, create(GetBalanceResponseSchema, { balance: effectiveBalance })), { status: 200, headers: { "Content-Type": "application/proto" } })
+      }
+      if (["ListPaymentMethods", "GetChallenge", "Deposit"].some(method => url.endsWith(`/exchange.v1.ExchangeService/${method}`))) {
+        const authorization = new Headers(init?.headers).get("Authorization")
+        expect(authorization).toMatch(/^Bearer /)
+        const token = authorization!.slice(7)
+        const claims = JSON.parse(new TextDecoder().decode(base64UrlDecode(token.split(".")[1])))
+        expect(claims.htu).toBe(url)
+        expect(claims.htm).toBe("POST")
       }
       if (url.endsWith("/ListPaymentMethods")) {
         expect(url).toBe("http://exchange.example:8088/exchange.v1.ExchangeService/ListPaymentMethods")

@@ -1,4 +1,4 @@
-import { create } from "@bufbuild/protobuf"
+import { create, equals } from "@bufbuild/protobuf"
 import { createClient } from "@connectrpc/connect"
 import { createConnectTransport } from "@connectrpc/connect-web"
 import { fromJson } from "@bufbuild/protobuf"
@@ -9,7 +9,7 @@ import { requestSuiFromFaucetV2 } from "@mysten/sui/faucet"
 import { Transaction } from "@mysten/sui/transactions"
 import { verifyPersonalMessageSignature } from "@mysten/sui/verify"
 import type { CashierConfig, PaymentConfig } from "./config.js"
-import { base64UrlDecode, dpopSeed, importDpopSeed, normalizeHtu, providerId, sha256, thumbprintFromJwk } from "./identity.js"
+import { bytesToHex, base64UrlDecode, dpopSeed, importDpopSeed, normalizeHtu, providerId, sha256, thumbprintFromJwk } from "./identity.js"
 import {
   AccountService,
   GetBalanceRequestSchema,
@@ -56,6 +56,7 @@ export type SuiClientLike = {
 }
 
 export interface CashierDeps {
+  onProviderDeposit?: (event: { provider: string; amount: bigint }) => void | Promise<void>
   fetch?: FetchLike
   suiClientFactory?: (payment: PaymentConfig) => SuiClientLike
   faucetRequest?: (payment: PaymentConfig, recipient: string) => Promise<unknown>
@@ -88,7 +89,7 @@ export class Cashier implements CashierServiceImplementation {
   }
 
   #keypair(account: { masterSecret: Uint8Array }, hostname: string): Promise<dpop.KeyPair> {
-    const cacheKey = `${Buffer.from(account.masterSecret).toString("hex")}:${hostname}`
+    const cacheKey = `${bytesToHex(account.masterSecret)}:${hostname}`
     let promise = this.#keypairs.get(cacheKey)
     if (!promise) {
       const seed = dpopSeed(this.#config.accountSalt, account.masterSecret, hostname)
@@ -137,17 +138,19 @@ export class Cashier implements CashierServiceImplementation {
 
   async #verifyManifest(manifestOrigin: string) {
     const raw = await this.#providerManifest(manifestOrigin)
-    const [header, payload, signature] = raw.signature.split(".")
-    if (!header || !payload || !signature) throw new Error("invalid provider manifest signature")
+    const [header, payload, signature, extra] = raw.signature.split(".")
+    if (!header || !payload || !signature || extra) throw new Error("invalid provider manifest signature")
     const unsigned = fromJson(ProviderManifestSchema, { version: raw.version, id: raw.id, exchanges: raw.exchanges.map((exchange) => ({ id: exchange.id, hosts: exchange.hosts, payment_coin: this.enumName(PaymentCoinSchema, exchange.paymentCoin), payment_environment: this.enumName(PaymentEnvironmentSchema, exchange.paymentEnvironment) })) })
-    const encodedHeader = JSON.parse(new TextDecoder().decode(base64UrlDecode(header))) as { jwk?: { x?: string; y?: string } }
-    if (!encodedHeader.jwk?.x || !encodedHeader.jwk.y) throw new Error("provider manifest does not include issuer JWK")
+    const encodedHeader = JSON.parse(new TextDecoder().decode(base64UrlDecode(header))) as { alg?: string; jwk?: { kty?: string; crv?: string; x?: string; y?: string } }
+    if (encodedHeader.alg !== "ES256" || encodedHeader.jwk?.kty !== "EC" || encodedHeader.jwk?.crv !== "P-256" || !encodedHeader.jwk?.x || !encodedHeader.jwk.y) throw new Error("provider manifest does not include issuer JWK")
     const publicJwk = { crv: "P-256", kty: "EC", x: encodedHeader.jwk.x, y: encodedHeader.jwk.y }
     const publicKey = await crypto.subtle.importKey("jwk", publicJwk, { name: "ECDSA", namedCurve: "P-256" }, true, ["verify"])
     const data = new TextEncoder().encode(`${header}.${payload}`)
     const signatureBytes = base64UrlDecode(signature)
     const valid = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, publicKey, signatureBytes, data)
     if (!valid) throw new Error("provider manifest signature verification failed")
+    const signed = fromJson(ProviderManifestSchema, JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))))
+    if (!equals(ProviderManifestSchema, signed, unsigned)) throw new Error("provider manifest does not match signed payload")
     const thumbprint = thumbprintFromJwk({ crv: "P-256", kty: "EC", x: encodedHeader.jwk.x, y: encodedHeader.jwk.y })
     if (raw.id !== providerId(thumbprint)) throw new Error("provider manifest id does not match signer identity")
     return { manifest: raw, exchanges: raw.exchanges }
@@ -164,7 +167,7 @@ export class Cashier implements CashierServiceImplementation {
       client = createClient(AccountService, createConnectTransport({
         baseUrl: this.#serviceOrigin(hostname),
         useBinaryFormat: true,
-        fetch: this.#deps.fetch ? Object.assign((input: RequestInfo | URL, init?: RequestInit) => this.#deps.fetch!(input, init), { preconnect: globalThis.fetch.preconnect }) : undefined,
+        fetch: this.#deps.fetch ? Object.assign((input: RequestInfo | URL, init?: RequestInit) => this.#deps.fetch!.call(globalThis, input, init), { preconnect: globalThis.fetch.preconnect }) : undefined,
       }))
       this.#accountClients.set(key, client)
     }
@@ -178,7 +181,7 @@ export class Cashier implements CashierServiceImplementation {
       client = createClient(ExchangeService, createConnectTransport({
         baseUrl: exchangeOrigin,
         useBinaryFormat: true,
-        fetch: this.#deps.fetch ? Object.assign((input: RequestInfo | URL, init?: RequestInit) => this.#deps.fetch!(input, init), { preconnect: globalThis.fetch.preconnect }) : undefined,
+        fetch: this.#deps.fetch ? Object.assign((input: RequestInfo | URL, init?: RequestInit) => this.#deps.fetch!.call(globalThis, input, init), { preconnect: globalThis.fetch.preconnect }) : undefined,
       }))
       this.#exchangeClients.set(key, client)
     }
@@ -249,8 +252,14 @@ export class Cashier implements CashierServiceImplementation {
   async #depositToExchange(exchangeOrigin: string, account: { masterSecret: Uint8Array }, payment: PaymentConfig) {
     const hostname = new URL(exchangeOrigin).hostname
     const client = this.#exchangeClient(exchangeOrigin)
+    const exchangeKey = await this.#keypair(account, hostname)
+    const bootstrapHeaders = async (method: string) => ({
+      Authorization: `Bearer ${await dpop.generateProof(exchangeKey, normalizeHtu(`${exchangeOrigin}/exchange.v1.ExchangeService/${method}`), "POST")}`,
+      "x-request-id": crypto.randomUUID(),
+      "x-user-id": await this.#principal(exchangeKey),
+    })
     const methods = await client.listPaymentMethods(create(ListPaymentMethodsRequestSchema, {}), {
-      headers: { "x-request-id": crypto.randomUUID(), "x-user-id": await this.#principal(await this.#keypair(account, hostname)) },
+      headers: await bootstrapHeaders("ListPaymentMethods"),
     })
     const method = methods.paymentMethods.find((entry) => entry.coin === payment.paymentCoin && entry.environment === payment.paymentEnvironment)
     if (!method?.address) throw new Error("exchange has no matching payment method")
@@ -273,7 +282,7 @@ export class Cashier implements CashierServiceImplementation {
     const confirmed = await suiClient.waitForTransaction({ digest: result.Transaction.digest, timeout: 20_000 })
     if (!confirmed.Transaction) throw new Error("SUI transaction did not succeed")
     const challenge = await client.getChallenge(create(GetChallengeRequestSchema, { address: keypair.toSuiAddress() }), {
-      headers: { "x-request-id": crypto.randomUUID(), "x-user-id": await this.#principal(await this.#keypair(account, hostname)) },
+      headers: await bootstrapHeaders("GetChallenge"),
     })
     const signed = await keypair.signPersonalMessage(challenge.challenge)
     await verifyPersonalMessageSignature(challenge.challenge, signed.signature, { address: keypair.toSuiAddress() })
@@ -286,7 +295,7 @@ export class Cashier implements CashierServiceImplementation {
         signature: signed.signature,
       },
     }), {
-      headers: { "x-request-id": crypto.randomUUID(), "x-user-id": await this.#principal(await this.#keypair(account, hostname)) },
+      headers: await bootstrapHeaders("Deposit"),
     })
   }
 
@@ -355,6 +364,7 @@ export class Cashier implements CashierServiceImplementation {
         "x-user-id": await this.#principal(await this.#keypair(account, providerHostname)),
       },
     })
+    await this.#deps.onProviderDeposit?.({ provider: providerId, amount })
   }
 
   suiNetwork(environment: PaymentEnvironment): "mainnet" | "testnet" | "devnet" | "localnet" {

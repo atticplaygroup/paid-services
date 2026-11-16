@@ -26,7 +26,7 @@ test("release packaging stamps every chart and dependency without changing sourc
   const source = readFileSync(join(import.meta.dir, "../../charts/cashier/values.yaml"), "utf8")
   try {
     const charts = stageCharts("v0.1.123", directory)
-    expect(charts).toHaveLength(8)
+    expect(charts).toHaveLength(10)
     for (const chart of charts) {
       const metadata = Bun.YAML.parse(readFileSync(join(chart, "Chart.yaml"), "utf8")) as any
       expect(metadata.version).toBe("0.1.123")

@@ -1,0 +1,14 @@
+{
+  "name": "@paid/papp-sdk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "multiformats": "^14.0.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0"
+  }
+}

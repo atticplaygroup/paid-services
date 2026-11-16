@@ -19,7 +19,7 @@ export class DirectAccessTokenProvider implements AccessTokenProvider {
     const htu = new URL(url)
     htu.search = ""
     htu.hash = ""
-    return dpop.generateProof(this.keypair, htu.href.replace(/\/$/, ""), method)
+    return dpop.generateProof(this.keypair, htu.href, method)
   }
 }
 

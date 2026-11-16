@@ -1,0 +1,9 @@
+{
+  "name": "papp-framework-e2e",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "dpop": "^2.1.1",
+    "playwright": "1.61.1"
+  }
+}

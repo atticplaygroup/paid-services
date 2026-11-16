@@ -38,7 +38,7 @@ func getOwner(ctx context.Context, mode pb.AuthorizationMode) (string, error) {
 	switch mode {
 	case pb.AuthorizationMode_AUTHORIZATION_MODE_CONTENT_ADDRESSED:
 		return PublicUserName, nil
-	case pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ, pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ:
+	case pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ:
 		session, err := middleware.SessionFromContext(ctx)
 		if err != nil {
 			return "", fmt.Errorf("get session: %w", err)
@@ -52,8 +52,7 @@ func getOwner(ctx context.Context, mode pb.AuthorizationMode) (string, error) {
 }
 
 func needsMetadata(mode pb.AuthorizationMode) bool {
-	return mode == pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ ||
-		mode == pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ
+	return mode == pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ
 }
 
 func (s *ProtectedKvStore) putMetadata(ctx context.Context, md *pb.ValueMetadata, user, key string, ttl time.Duration) error {
@@ -225,11 +224,6 @@ func (s *ProtectedKvStore) ensurePermissionAndNormalizeKey(ctx context.Context, 
 	mode := md.GetAuthorizationMode()
 	switch mode {
 	case pb.AuthorizationMode_AUTHORIZATION_MODE_CONTENT_ADDRESSED:
-		return utils.FormatProtectedName(owner, key), nil
-	case pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ:
-		if session.UserId != owner {
-			return "", fmt.Errorf("unauthorized")
-		}
 		return utils.FormatProtectedName(owner, key), nil
 	case pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ:
 		if write && session.UserId != owner {

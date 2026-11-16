@@ -1,0 +1,24 @@
+fullnameOverride: index
+env:
+  mysqlDsn: routing:routing-password@tcp(mysql:3306)/routing?parseTime=true
+meter:
+  fullnameOverride: index-meter
+  redis: {host: redis, address: 'redis:6379'}
+  account:
+    validAudience: routing-index
+    faucetMode: true
+  priceSeed:
+    entries:
+      - key: p:mysql
+        fields: {METER_TYPE_DURATION_MS: '1', METER_TYPE_INGRESS_BYTES: '1', METER_TYPE_EGRESS_BYTES: '1'}
+      - key: p:3:1
+        fields: {METER_TYPE_DURATION_MS: '0', METER_TYPE_INGRESS_BYTES: '1', METER_TYPE_EGRESS_BYTES: '1'}
+      - key: p:3:3
+        fields: {METER_TYPE_DURATION_MS: '0', METER_TYPE_INGRESS_BYTES: '1', METER_TYPE_EGRESS_BYTES: '1'}
+
+mysqlHttp:
+  enabled: true
+  adminDsn: root:routing-root@tcp(mysql:3306)/routing
+  access:
+    tables:
+      routing: [advertisements]

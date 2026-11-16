@@ -17,10 +17,12 @@ mysql:
   binlogFormat: ROW
   binlogExpireLogsSeconds: 2592000 # MySQL native retention: 30 days.
 packer:
+  readyQuery: SELECT 1
   schedule: "0 0 * * 0" # Weekly baseline
   deltaSchedule: "*/5 * * * *"
   baselineRepo: baseline_app
   deltaRepo: binlog_app
   ociAddress: "" # Required OCI registry host:port, deployed separately
+  localOciUserID: "" # Optional internal caller identity for a same-party OCI converter.
   application: medium
   manifestRepo: app-manifests

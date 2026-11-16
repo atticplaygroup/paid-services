@@ -1,0 +1,53 @@
+{{- if .Values.mysqlHttp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mysql-replica.name" . }}-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "mysql-replica.name" . }}-envoy }
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/envoy-config.yaml") . | sha256sum }}
+      labels: { app: {{ include "mysql-replica.name" . }}-envoy }
+    spec:
+      containers:
+        - name: envoy
+          image: envoyproxy/envoy:v1.38.3
+          args: ["-c", "/etc/envoy/envoy.yaml"]
+          ports:
+            - { name: http, containerPort: 8080 }
+            {{- if .Values.env.tlsSecretName }}
+            - { name: https, containerPort: 8443 }
+            {{- end }}
+            - { name: admin, containerPort: 9901 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/envoy }
+            {{- if .Values.env.tlsSecretName }}
+            - { name: tls, mountPath: /etc/envoy/tls, readOnly: true }
+            {{- end }}
+      volumes:
+        - name: config
+          configMap: { name: {{ include "mysql-replica.name" . }}-envoy-config }
+        {{- if .Values.env.tlsSecretName }}
+        - name: tls
+          secret: { secretName: {{ .Values.env.tlsSecretName }} }
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mysql-replica.name" . }}-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector: { app: {{ include "mysql-replica.name" . }}-envoy }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+    {{- if .Values.env.tlsSecretName }}
+    - { name: https, port: 8443, targetPort: https }
+    {{- end }}
+
+{{- end }}

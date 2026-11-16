@@ -11,6 +11,8 @@
         "@connectrpc/connect-web": "^2.1.2",
         "@grpc/grpc-js": "^1.14.4",
         "@mysten/sui": "2.30.0",
+        "@noble/curves": "^2.4.0",
+        "@noble/hashes": "^2.0.1",
         "@scure/bip39": "^2.4.0",
         "dpop": "^2.1.1",
         "hono": "^4.12.32",

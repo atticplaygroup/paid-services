@@ -8,9 +8,7 @@ import (
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
-	connectcors "connectrpc.com/cors"
 	"connectrpc.com/grpcreflect"
-	"github.com/rs/cors"
 
 	"github.com/atticplaygroup/paid-services/infrastructure/pkg/middleware"
 )
@@ -73,11 +71,10 @@ func Serve(options Options) {
 		mux.Handle(route.Pattern, route.Handler)
 	}
 
-	corsHandler := CORS().Handler(mux)
 	log.Printf("server started at %s", options.Address)
 	server := &http.Server{
 		Addr:    options.Address,
-		Handler: corsHandler,
+		Handler: mux,
 	}
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -86,14 +83,4 @@ func Serve(options Options) {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("http serve: %v", err)
 	}
-}
-
-func CORS() *cors.Cors {
-	return cors.New(cors.Options{
-		AllowOriginFunc:  func(string) bool { return true },
-		AllowedMethods:   connectcors.AllowedMethods(),
-		AllowedHeaders:   append(connectcors.AllowedHeaders(), "Authorization"),
-		ExposedHeaders:   connectcors.ExposedHeaders(),
-		AllowCredentials: true,
-	})
 }

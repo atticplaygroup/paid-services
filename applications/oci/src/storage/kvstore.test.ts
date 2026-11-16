@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { createProxiedFetch, KvstoreClient, principalFromJwk } from "./kvstore.js"
+import { KvstoreClient, principalFromJwk } from "./kvstore.js"
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf"
 import * as pb from "../proto/gen/es/kvstore/v1/kvstore_pb.js"
 import { createOciApp } from "../server.js"
@@ -17,38 +17,34 @@ async function publicJwk(pair: CryptoKeyPair): Promise<string> {
   return JSON.stringify(jwk)
 }
 
-describe("KvstoreClient anchors", () => {
-  it("proxied requests preserve caller headers unchanged", async () => {
-    const seen: Headers[] = []
-    const fetchFn = createProxiedFetch("http://outproxy.invalid")
-    const originalFetch = globalThis.fetch
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      seen.push(new Headers(init?.headers))
-      return new Response(new Uint8Array(), { status: 200, headers: { "content-type": "application/proto" } })
-    }) as typeof fetch
-    try {
-      await fetchFn("http://kvstore.invalid/example", {
-        method: "POST",
-        headers: { "x-user-id": "alice", "x-request-id": "internal", "x-external-request-id": "external" },
-      })
-    } finally {
-      globalThis.fetch = originalFetch
+function captureAnchorRequests() {
+  const anchors: Anchor[] = []
+  const fetchFn = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const method = String(input).split("/").pop()
+    if (method === "CreateProtectedValueAnchor") {
+      const body = new Uint8Array(await new Response(init?.body).arrayBuffer())
+      const request = fromBinary(pb.CreateProtectedValueAnchorRequestSchema, body)
+      if (!request.anchor) throw new Error("missing anchor in request")
+      anchors.push(request.anchor)
+    } else if (method !== "CreateCASValue") {
+      throw new Error(`unexpected storage method: ${method}`)
     }
-    expect(seen).toHaveLength(1)
-    expect(seen[0].get("x-user-id")).toBe("alice")
-    expect(seen[0].get("x-request-id")).toBe("internal")
-    expect(seen[0].get("x-external-request-id")).toBe("external")
-  })
+    return new Response(new Uint8Array(), { headers: { "content-type": "application/proto" } })
+  }
+  return { anchors, fetchFn }
+}
 
+describe("KvstoreClient anchors", () => {
   it("signs and verifies a manifest tag anchor", async () => {
     const pair = await keypair()
-    const client = new KvstoreClient("http://kvstore.invalid", pair, undefined, async () => new Response(new Uint8Array(), { status: 200, headers: { "content-type": "application/proto" } }))
-    const body = new TextEncoder().encode("feature3-manifest")
+    const { anchors, fetchFn } = captureAnchorRequests()
+    const client = new KvstoreClient("http://kvstore.invalid", pair, fetchFn)
+    const body = new TextEncoder().encode("kvstore-manifest")
     await client.putManifestTag("alice/testrepo", "latest", body, 1)
-    const storedAnchor = (client as any).lastAnchor as Anchor
+    expect(anchors).toHaveLength(1)
+    const anchor = anchors[0]
     const expectedOwner = await principalFromJwk(await crypto.subtle.exportKey("jwk", pair.publicKey))
-    const anchor = { ...storedAnchor, owner: expectedOwner }
-    expect(storedAnchor.owner).toBe(expectedOwner)
+    expect(anchor.owner).toBe(expectedOwner)
     expect(anchor.key).toBe("oci/manifests/alice/testrepo/latest")
     expect(anchor.revision).toBe(1n)
     expect(anchor.ownerJwk).toBe(await publicJwk(pair))
@@ -57,18 +53,22 @@ describe("KvstoreClient anchors", () => {
 
   it("rejects a tampered anchor payload", async () => {
     const pair = await keypair()
-    const client = new KvstoreClient("http://kvstore.invalid", pair, undefined, async () => new Response(new Uint8Array(), { status: 200, headers: { "content-type": "application/proto" } }))
-    const body = new TextEncoder().encode("feature3-manifest")
+    const { anchors, fetchFn } = captureAnchorRequests()
+    const client = new KvstoreClient("http://kvstore.invalid", pair, fetchFn)
+    const body = new TextEncoder().encode("kvstore-manifest")
     await client.putManifestTag("alice/testrepo", "latest", body, 1)
-    const anchor = { ...(client as any).lastAnchor as Anchor, cid: "bafkreig7f4xujwi5nzjncvau2wpqjmqcnkts7dr5lpsgm3tqe2mvrqphjm" }
+    expect(anchors).toHaveLength(1)
+    const anchor = { ...anchors[0], cid: "bafkreig7f4xujwi5nzjncvau2wpqjmqcnkts7dr5lpsgm3tqe2mvrqphjm" }
     await expect((client as any).verifyAnchor(anchor)).rejects.toThrow("anchor payload mismatch")
   })
 
   it("signs and verifies a tag-list anchor", async () => {
     const pair = await keypair()
-    const client = new KvstoreClient("http://kvstore.invalid", pair, undefined, async () => new Response(new Uint8Array(), { status: 200, headers: { "content-type": "application/proto" } }))
+    const { anchors, fetchFn } = captureAnchorRequests()
+    const client = new KvstoreClient("http://kvstore.invalid", pair, fetchFn)
     await client.putTagList("alice/testrepo", ["latest"])
-    const anchor = (client as any).lastAnchor as Anchor
+    expect(anchors).toHaveLength(1)
+    const anchor = anchors[0]
     expect(anchor.key).toBe("oci/tags/alice/testrepo")
     await (client as any).verifyAnchor(anchor)
   })
@@ -116,8 +116,8 @@ it("serves publisher tags through a reader with a different payment identity", a
   const owner = await principalFromJwk(await crypto.subtle.exportKey("jwk", publisherKeys.publicKey))
   const readerOwner = await principalFromJwk(await crypto.subtle.exportKey("jwk", readerKeys.publicKey))
   expect(readerOwner).not.toBe(owner)
-  const publisher = new KvstoreClient("http://storage.invalid", publisherKeys, undefined, storageFetch)
-  const reader = new KvstoreClient("http://storage.invalid", readerKeys, undefined, storageFetch)
+  const publisher = new KvstoreClient("http://storage.invalid", publisherKeys, storageFetch)
+  const reader = new KvstoreClient("http://storage.invalid", readerKeys, storageFetch)
   const meter = { reportUsage: async () => true } as unknown as MeterClient
   const writerApp = createOciApp({ kvstore: publisher, meter })
   const readerApp = createOciApp({ kvstore: reader, meter, readOnly: true })

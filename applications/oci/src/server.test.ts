@@ -84,6 +84,8 @@ describe("OCI /v2/ endpoints", () => {
       }),
     )
     expect(res.status).toBe(200)
+    expect(res.headers.get("Content-Length")).toBe("1")
+    expect(res.headers.get("Docker-Content-Digest")).toBe("sha256:" + "a".repeat(64))
   })
 
   it("HEAD /v2/:name/blobs/:digest returns 404 for missing blob", async () => {
@@ -184,6 +186,25 @@ describe("OCI /v2/ endpoints", () => {
 })
 
 describe("OCI manifest endpoints", () => {
+  it("preserves manifest bytes and their digest when fetched by tag or digest", async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2) + "\n")
+    const hash = "sha256:" + new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+    const deps = fakeDeps()
+    deps.kvstore.getManifestTag = mock(async (_name: string, ref: string) => ref === "latest" ? bytes : null)
+    deps.kvstore.getBlob = mock(async () => bytes)
+    const app = createOciApp(deps)
+    for (const ref of ["latest", hash]) {
+      const response = await app.fetch(new Request(`http://test/v2/alice/testrepo/manifests/${ref}`))
+      expect(response.status).toBe(200)
+      expect(response.headers.get("Docker-Content-Digest")).toBe(hash)
+      expect(response.headers.get("Content-Type")).toBe("application/vnd.oci.image.manifest.v1+json")
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
+      const head = await app.fetch(new Request(`http://test/v2/alice/testrepo/manifests/${ref}`, { method: "HEAD" }))
+      expect(head.status).toBe(200)
+      expect(head.headers.get("Content-Length")).toBe(String(bytes.byteLength))
+      expect(head.headers.get("Docker-Content-Digest")).toBe(hash)
+    }
+  })
   it("PUT /v2/:name/manifests/:ref stores and returns 201", async () => {
     const deps = fakeDeps()
     const app = createOciApp(deps)

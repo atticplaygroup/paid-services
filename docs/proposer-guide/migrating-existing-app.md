@@ -21,6 +21,10 @@ How will you profit then? Many possibilities. Maybe as a KOL. You provide high q
 
 ## Migrating the client
 
+For browser applications, follow [Run or migrate your application as a pApp](papp.md).
+It covers static frontend publishing, public reads through PAID providers, and
+keeping your existing login and mutation APIs.
+
 <!-- Self-host service mode for blackbox client and in-app interceptor mode for outproxy and cashier -->
 
 ## Migrating mutation APIs

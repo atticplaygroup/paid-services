@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"connectrpc.com/connect"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type AuthConfig struct {
@@ -34,11 +32,11 @@ func NewAuthInterceptor(config *AuthConfig, unprotectedApis ...string) connect.U
 
 			userId := req.Header().Get(config.UserIdHeaderName)
 			if userId == "" {
-				return nil, status.Error(codes.Unauthenticated, "empty user_id")
+				return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("empty user_id"))
 			}
 			requestId := req.Header().Get(config.RequestIdHeaderName)
 			if requestId == "" {
-				return nil, status.Error(codes.InvalidArgument, "empty request_id")
+				return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("empty request_id"))
 			}
 			externalRequestId := req.Header().Get(config.ExternalRequestIdHeaderName)
 			return next(context.WithValue(ctx, sessionKey{}, &Session{

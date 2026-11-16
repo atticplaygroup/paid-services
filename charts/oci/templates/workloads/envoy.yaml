@@ -9,6 +9,8 @@ spec:
     matchLabels: { app: {{ include "oci.name" . }}-envoy }
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps/envoy-config.yaml") . | sha256sum }}
       labels: { app: {{ include "oci.name" . }}-envoy }
     spec:
       containers:
