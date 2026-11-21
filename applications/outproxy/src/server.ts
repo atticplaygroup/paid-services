@@ -1,4 +1,4 @@
-import { AccessTokenError, CashierAccessTokenProvider, DirectAccessTokenProvider, type AccessTokenProvider } from "./access-token.js"
+import { AccessTokenError, CashierAccessTokenProvider, DirectAccessTokenProvider, type AccessTokenProvider } from "@paid/client-auth"
 import { deriveCashierPrincipal, importMasterSecretSeed, importP256Seed } from "./identity.js"
 export { importMasterSecretSeed } from "./identity.js"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
@@ -201,7 +201,9 @@ export async function main(overrideConfig?: Config) {
     responseHeaders.delete("keep-alive")
     responseHeaders.delete("proxy-connection")
     responseHeaders.delete("transfer-encoding")
-    responseHeaders.delete("content-length")
+    // HEAD's Content-Length describes the object, not the empty response body.
+    // S3 clients need it to discover object sizes before downloading.
+    if (method !== "HEAD") responseHeaders.delete("content-length")
     response.writeHead(upstream.status, Object.fromEntries(responseHeaders.entries()))
     response.end(Buffer.from(await upstream.arrayBuffer()))
   }
@@ -231,6 +233,7 @@ export async function main(overrideConfig?: Config) {
     tunneledServer.emit("connection", tlsSocket)
   })
   server.listen(port)
+  return server
 }
 
 if (import.meta.main) main().catch((err) => {

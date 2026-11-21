@@ -6,25 +6,16 @@ import (
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
 func protoValidation(req any, v protovalidate.Validator) error {
 	m, ok := req.(proto.Message)
 	if !ok {
-		return status.Error(
-			codes.InvalidArgument,
-			"failed to parse proto",
-		)
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("failed to parse proto"))
 	}
 	if err := v.Validate(m); err != nil {
-		return status.Errorf(
-			codes.InvalidArgument,
-			"parse proto: %v",
-			err,
-		)
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("parse proto: %w", err))
 	}
 	return nil
 }

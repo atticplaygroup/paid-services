@@ -45,6 +45,7 @@ export function createOciApp(deps: OciDeps): Hono {
     }
     c.header("Content-Type", "application/octet-stream")
     c.header("Docker-Content-Digest", digest)
+    c.header("Content-Length", String(blob.byteLength))
     return c.body(blob as any)
   })
 
@@ -54,6 +55,9 @@ export function createOciApp(deps: OciDeps): Hono {
     if (!dp) { c.status(400); return c.body(null) }
     const blob = await withRequestIdentity(getRequestIdentity(c), () => deps.kvstore.getBlob(digest))
     if (!blob) { c.status(404); return c.body(null) }
+    c.header("Content-Type", "application/octet-stream")
+    c.header("Docker-Content-Digest", digest)
+    c.header("Content-Length", String(blob.byteLength))
     return c.body(null)
   })
 
@@ -79,7 +83,12 @@ export function createOciApp(deps: OciDeps): Hono {
     const digest = digestOf(body)
     c.header("Docker-Content-Digest", digest)
     c.header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
-    return c.json(JSON.parse(new TextDecoder().decode(body)))
+    // Registry clients resolve descriptors with HEAD and require the size of
+    // the GET representation, even though HEAD has no response body.
+    c.header("Content-Length", String(body.byteLength))
+    // OCI digests cover the original bytes, including whitespace. Re-encoding
+    // JSON here breaks ORAS verification and copying a digest to another tag.
+    return c.body(body as any)
   })
 
   // ---- Tags endpoint (kvstore-backed) ----

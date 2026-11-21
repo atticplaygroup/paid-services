@@ -68,7 +68,7 @@ async function callAccountBinary(path: string, request: Uint8Array) {
   return response
 }
 
-describe("Feature 5: production kvstore chart", () => {
+describe("Cashier: production kvstore chart", () => {
   let principal: string
   let portForward: ReturnType<typeof Bun.spawn> | undefined
 
@@ -108,7 +108,7 @@ describe("Feature 5: production kvstore chart", () => {
   })
 
   it("stores and retrieves a value through direct-mode outproxy", async () => {
-    const value = new TextEncoder().encode("feature 5 kvstore chart")
+    const value = new TextEncoder().encode("cashier kvstore chart")
     const key = (await CID.create(1, 0x55, await sha256.digest(value))).toString()
     const createdRequest = toBinary(CreateCASValueRequestSchema, create(CreateCASValueRequestSchema, {
       storageBackend: StorageBackend.BLOB_STORAGE,

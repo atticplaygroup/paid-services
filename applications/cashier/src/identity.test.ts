@@ -1,13 +1,23 @@
 import { describe, expect, it } from "bun:test"
 import * as dpop from "dpop"
 import { p256 } from "@noble/curves/nist.js"
-import { base64UrlDecode, dpopSeed, importDpopSeed, normalizeHtu, providerId, sha256, thumbprintFromJwk } from "./identity.js"
+import { bytesToHex, base64UrlDecode, dpopSeed, importDpopSeed, normalizeHtu, providerId, sha256, thumbprintFromJwk } from "./identity.js"
 
 function b64url(input: Uint8Array): string {
   return input.toBase64({ alphabet: "base64url", omitPadding: true })
 }
 
 describe("identity", () => {
+  it("preserves SHA-256 identity derivation across browser and server runtimes", () => {
+    const encode = (value: string) => new TextEncoder().encode(value)
+    expect(bytesToHex(sha256(encode("a"), encode("bc")))).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    )
+    expect(bytesToHex(sha256())).toBe(
+      "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    )
+  })
+
   it("derives valid P-256 keys and signs DPoP proofs", async () => {
     const seed = sha256(new TextEncoder().encode("salt"), new TextEncoder().encode("secret"), new TextEncoder().encode("provider.example"))
     const keypair = await importDpopSeed(seed)

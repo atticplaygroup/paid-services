@@ -17,6 +17,14 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
                       common_config:
                         log_name: {{ .Values.env.deductionLogName }}
+                        custom_tags:
+                          - tag: meter_service
+                            metadata:
+                              kind: { route: {} }
+                              metadata_key:
+                                key: paid.meter
+                                path: [{ key: service }]
+                              default_value: ""
                         grpc_service:
                           envoy_grpc: { cluster_name: {{ include "kvstore.fullname" . }}-meter-deduction }
                       additional_request_headers_to_log:
@@ -32,11 +40,45 @@ static_resources:
                   virtual_hosts:
                     - name: account
                       domains: {{ include "kvstore.requiredAccountDomains" . }}
+                      {{- if .Values.cors.allowOrigins }}
+                      typed_per_filter_config:
+                        envoy.filters.http.cors:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                          allow_origin_string_match:
+                            {{- range .Values.cors.allowOrigins }}
+                            {{- if eq . "*" }}
+                            - safe_regex: { regex: ".*" }
+                            {{- else }}
+                            - exact: {{ . | quote }}
+                            {{- end }}
+                            {{- end }}
+                          allow_methods: "GET, POST, OPTIONS"
+                          allow_headers: "authorization, content-type, connect-protocol-version, connect-timeout-ms, grpc-timeout, x-grpc-web, x-user-agent, x-user-id, x-request-id, x-external-request-id"
+                          expose_headers: "grpc-status, grpc-message, grpc-status-details-bin, x-request-id"
+                          max_age: "600"
+                      {{- end }}
                       routes:
                         - match: { prefix: "/" }
                           route: { cluster: account, timeout: 120s }
                     - name: default
                       domains: ["*"]
+                      {{- if .Values.cors.allowOrigins }}
+                      typed_per_filter_config:
+                        envoy.filters.http.cors:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                          allow_origin_string_match:
+                            {{- range .Values.cors.allowOrigins }}
+                            {{- if eq . "*" }}
+                            - safe_regex: { regex: ".*" }
+                            {{- else }}
+                            - exact: {{ . | quote }}
+                            {{- end }}
+                            {{- end }}
+                          allow_methods: "GET, POST, OPTIONS"
+                          allow_headers: "authorization, content-type, connect-protocol-version, connect-timeout-ms, grpc-timeout, x-grpc-web, x-user-agent, x-user-id, x-request-id, x-external-request-id"
+                          expose_headers: "grpc-status, grpc-message, grpc-status-details-bin, x-request-id"
+                          max_age: "600"
+                      {{- end }}
                       routes:
                         - match:
                             prefix: "/.well-known/paid_provider_manifest.json"
@@ -44,6 +86,9 @@ static_resources:
                             status: 200
                             body:
                                   inline_string: {{ printf "%s" .Values.env.providerManifest | quote }}
+                          response_headers_to_add:
+                            - header: { key: content-type, value: application/json }
+                            - header: { key: access-control-allow-origin, value: "*" }
                           typed_per_filter_config:
                             envoy.filters.http.ext_authz:
                               "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
@@ -52,15 +97,49 @@ static_resources:
                           route: { cluster: account, timeout: 120s }
                         - match: { prefix: "/v1/faucet:credit" }
                           route: { cluster: account, timeout: 120s }
+                        {{- if .Values.s3.directAccess.enabled }}
+                        {{- range $match := list (dict "path" (printf "/%s" $.Values.s3.bucket)) (dict "prefix" (printf "/%s/" $.Values.s3.bucket)) }}
+                        - match: {{ $match | toJson }}
+                          route: { cluster: s3, timeout: 120s }
+                          metadata:
+                            filter_metadata:
+                              paid.meter: { service: s3 }
+                          typed_per_filter_config:
+                            envoy.filters.http.aws_request_signing:
+                              "@type": type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigningPerRoute
+                              stat_prefix: direct_s3
+                              aws_request_signing:
+                                service_name: s3
+                                region: {{ $.Values.s3.directAccess.region | quote }}
+                                host_rewrite: {{ include "kvstore.s3Endpoint" $ | quote }}
+                                use_unsigned_payload: true
+                        {{- end }}
+                        {{- end }}
                         - match: { prefix: "/" }
                           route: { cluster: kvstore, timeout: 120s }
                 http_filters:
+                  {{- if .Values.cors.allowOrigins }}
+                  - name: envoy.filters.http.cors
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+                  {{- end }}
                   - name: envoy.filters.http.ext_authz
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
                       transport_api_version: V3
                       grpc_service:
                         envoy_grpc: { cluster_name: authz-http }
+                  {{- if .Values.s3.directAccess.enabled }}
+                  # Authentication runs first. Only the S3 bucket routes enable
+                  # signing; RPC/account requests retain their PAID Bearer proof.
+                  - name: envoy.filters.http.aws_request_signing
+                    disabled: true
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.aws_request_signing.v3.AwsRequestSigning
+                      service_name: s3
+                      region: {{ .Values.s3.directAccess.region | quote }}
+                      use_unsigned_payload: true
+                  {{- end }}
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -82,6 +161,34 @@ static_resources:
               typed_config: *http_connection_manager
     {{- end }}
   clusters:
+    {{- if .Values.s3.directAccess.enabled }}
+    {{- $endpoint := include "kvstore.s3Endpoint" . }}
+    {{- $hostname := (urlParse (printf "http://%s" $endpoint)).hostname }}
+    {{- $port := trimPrefix ":" (regexFind ":[0-9]+$" $endpoint) | default (ternary "443" "80" .Values.s3.secure) }}
+    - name: s3
+      connect_timeout: 2s
+      type: STRICT_DNS
+      {{- if .Values.s3.secure }}
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: {{ $hostname | quote }}
+          common_tls_context:
+            validation_context:
+              trusted_ca: { filename: /etc/ssl/certs/ca-certificates.crt }
+              match_typed_subject_alt_names:
+                - san_type: DNS
+                  matcher: { exact: {{ $hostname | quote }} }
+      {{- end }}
+      load_assignment:
+        cluster_name: s3
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: {{ $hostname | quote }}, port_value: {{ $port }} }
+    {{- end }}
     - name: {{ include "kvstore.fullname" . }}-meter-deduction
       connect_timeout: 2s
       type: STRICT_DNS

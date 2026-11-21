@@ -1,12 +1,13 @@
+import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js"
 import { p256 } from "@noble/curves/nist.js"
 import * as dpop from "dpop"
 import { CID } from "multiformats/cid"
 import { create as createDigest } from "multiformats/hashes/digest"
 
 export function sha256(...inputs: Uint8Array[]): Uint8Array {
-  const hash = new Bun.CryptoHasher("sha256")
-  for (const rawInput of inputs) hash.update(rawInput)
-  return new Uint8Array(hash.digest().buffer as ArrayBuffer, hash.digest().byteOffset, hash.digest().byteLength)
+  const hash = nobleSha256.create()
+  for (const input of inputs) hash.update(input)
+  return hash.digest()
 }
 
 export function bytesToHex(input: Uint8Array): string {

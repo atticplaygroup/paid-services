@@ -23,3 +23,8 @@ meter:
     seedJobEnabled: true
     host: "" # host: party-redis
     address: "" # address: party-redis:6379
+
+# Browser CORS is handled by Envoy. "*" allows all origins; use exact origins
+# to restrict browser access, or [] to disable service CORS. PAID authentication still applies.
+cors:
+  allowOrigins: ["*"]

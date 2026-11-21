@@ -73,26 +73,25 @@ curl --proxy http://127.0.0.1:9090 \
 If you own the client, and do not want to MITM yourself with a self-signed certificate. Mint a proof and send it:
 
 ```ts
-import * as dpop from "dpop"
+import { createAuthenticatedFetch, DirectAccessTokenProvider } from "@paid/client-auth"
 
-const htu = "https://kvstore.paid-services.com/kvstore.v1.MeteredStorageService/GetCASValue"
-// Option 1: fixed key mode
-// const proof = await dpop.generateProof(keypair, htu, "POST")
-// Option 2: cashier mode
-const cashierConfig = // load async storage
-const cashier = new Cashier(configConfig)
-const proof = cashier.getAccessToken(...)
-const response = await fetch(htu, {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${proof}`,
-    "content-type": "application/json",
-  },
-  body: JSON.stringify({ key: "bafkreigiyywomv3ur7dopm46bwkcpeeyiwotvdekfuq2armskkknts73qi" }),
-})
+const authenticatedFetch = createAuthenticatedFetch(new DirectAccessTokenProvider(keypair))
+const response = await authenticatedFetch(
+  "https://kvstore.paid-services.com/kvstore.v1.MeteredStorageService/GetCASValue",
+  { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: "..." }) },
+)
 ```
 
-That is the same header outproxy would have added. You can create an custom fetch function for reuse. Then it will act as an interceptor.
+`applications/client-auth` owns the browser-safe token providers and fetch
+interceptor. Both the interceptor and outproxy server use
+`DirectAccessTokenProvider` or `CashierAccessTokenProvider`; the server adds the
+forward-proxy and TLS transport. Pass a `CashierAccessTokenProvider` to
+`createAuthenticatedFetch` for cashier-backed authentication. Direct-key mode
+requires separately funded accounts.
+
+When combining with routing, pass the authenticated fetch to the router so each
+proof binds to the final selected provider and method. No proxy service or MITM
+certificate is needed in interceptor mode.
 
 ## Configuration
 

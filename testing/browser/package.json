@@ -1,0 +1,5 @@
+{
+  "name": "browser-echo-e2e",
+  "type": "module",
+  "dependencies": { "playwright": "1.61.1", "dpop": "^2.1.1" }
+}

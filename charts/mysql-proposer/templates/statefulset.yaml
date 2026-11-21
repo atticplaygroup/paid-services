@@ -55,13 +55,15 @@ spec:
           args:
             - |
               export MYSQL_PWD="$MYSQL_PASSWORD"
-              until mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse 'SELECT 1' >/dev/null 2>&1; do
+              until mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse "$PUBLICATION_READY_QUERY" >/dev/null 2>&1; do
                 sleep 2
               done
               mkdir -p "$OUTPUT_DIR"
               find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
               exec /usr/local/bin/supercronic -inotify /etc/mysql-publisher/crontab
           env:
+            - name: PUBLICATION_READY_QUERY
+              value: {{ .Values.packer.readyQuery | default "SELECT 1" | quote }}
             - name: MYSQL_HOST
               value: "127.0.0.1"
             - name: MYSQL_PORT
@@ -76,6 +78,8 @@ spec:
               value: "/var/lib/mysql"
             - name: OCI_ADDRESS
               value: {{ required "mysql-proposer.packer.ociAddress must be non-empty" .Values.packer.ociAddress | quote }}
+            - name: OCI_USER_ID
+              value: {{ .Values.packer.localOciUserID | default "" | quote }}
             - name: BASELINE_REPO
               value: {{ .Values.packer.baselineRepo | quote }}
             - name: DELTA_REPO

@@ -1,3 +1,4 @@
+import { sha256 } from "./identity.js";
 import { PaymentCoinSchema, PaymentEnvironmentSchema, type PaymentCoin, type PaymentEnvironment } from "./proto/gen/es/exchange/v1/exchange_pb.js";
 import { validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
@@ -66,9 +67,7 @@ export function parseCashierConfig(rawConfig: string): CashierConfig {
     if (typeof raw.masterSecretMnemonic !== "string" || raw.masterSecretMnemonic.length === 0) throw new Error(`masterSecretMnemonic for ${raw.principal} is required`)
     const normalizedMasterSecretMnemonic = raw.masterSecretMnemonic.normalize("NFKD")
     if (!validateMnemonic(normalizedMasterSecretMnemonic, wordlist)) throw new Error(`invalid masterSecretMnemonic for ${raw.principal}`)
-    const masterSecretHasher = new Bun.CryptoHasher("sha256")
-    masterSecretHasher.update(new TextEncoder().encode(normalizedMasterSecretMnemonic))
-    const masterSecretBytes = new Uint8Array(masterSecretHasher.digest())
+    const masterSecretBytes = sha256(new TextEncoder().encode(normalizedMasterSecretMnemonic))
     if (!masterSecretBytes || masterSecretBytes.length === 0) throw new Error(`masterSecret for ${raw.principal} is required`)
     const payments = (raw.payments ?? []).map((payment) => {
       if (typeof payment.mnemonic !== "string" || payment.mnemonic.length === 0) throw new Error(`payment mnemonic for ${raw.principal} is required`)

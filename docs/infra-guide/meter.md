@@ -12,6 +12,24 @@
 
 <!-- Deduction model: per request, per resource type, record unit. Then fetch dynamic price, multiply aggregate. -->
 
+### Gateway price keys
+
+By default, gateway deduction looks up Redis prices at
+`p:<TLS SNI>:<listener port>:<request path>`. A provider can group routes under a
+shared price schedule by configuring the Envoy access-log custom tag
+`meter_service`. A nonempty tag selects `p:<meter_service>` instead.
+
+This tag is a PAID convention using Envoy's custom-tag mechanism. The kvstore
+chart reads it from route metadata at `paid.meter.service`, setting `s3` on its
+direct S3 routes. All object keys and list queries therefore share `p:s3`.
+Request headers cannot override this metadata. Routes without the tag retain
+their existing price keys.
+
+Each gateway price hash contains `METER_TYPE_DURATION_MS`,
+`METER_TYPE_INGRESS_BYTES`, and `METER_TYPE_EGRESS_BYTES`. Duration is measured in
+milliseconds; ingress and egress include headers and bodies. Configure initial
+prices through `meter.priceSeed.entries`, then adjust the Redis fields as needed.
+
 ## Cascade metering
 
 <!-- Feedback metering: query resource usage a period later. Pull based usage reporting. External request id to track user. -->

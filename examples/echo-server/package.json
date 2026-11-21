@@ -1,0 +1,6 @@
+{
+  "name": "@paid/echo-example",
+  "type": "module",
+  "dependencies": { "hono": "^4.12.32" },
+  "scripts": { "start": "bun run server.ts" }
+}

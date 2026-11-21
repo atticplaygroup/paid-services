@@ -15,13 +15,14 @@ enum ConnectionSource {
 }
 
 enum AuthorizationMode {
+  reserved 3;
+  reserved "AUTHORIZATION_MODE_SELF_READ";
+
   AUTHORIZATION_MODE_UNSPECIFIED = 0;
   // Reserved for principal→resource ACLs. Not implemented.
   AUTHORIZATION_MODE_ACL = 1;
   // Content-addressed under value/public/{cid}. Key must equal CID. Any session may read/extend.
   AUTHORIZATION_MODE_CONTENT_ADDRESSED = 2;
-  // Named under value/{owner}/{key}. Read + write: owner only.
-  AUTHORIZATION_MODE_SELF_READ = 3;
   // Named under value/{owner}/{key}. Read: any session. Write: owner only.
   AUTHORIZATION_MODE_PUBLIC_READ = 4;
 }

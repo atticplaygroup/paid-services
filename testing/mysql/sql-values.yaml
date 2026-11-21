@@ -1,0 +1,20 @@
+mysqlHttp:
+  enabled: true
+  adminDsn: root:root@tcp(mysql-replica:3306)/
+  access:
+    schemas: [public_catalog]
+  queryTimeout: 2s
+meter:
+  enabled: true
+  fullnameOverride: replica-meter
+  redis:
+    enabled: false
+    host: replica-meter-redis
+    address: replica-meter-redis:6379
+  account:
+    validAudience: mysql-replica
+    faucetMode: true
+  priceSeed:
+    entries:
+      - key: p:mysql
+        fields: {METER_TYPE_DURATION_MS: '1', METER_TYPE_INGRESS_BYTES: '1', METER_TYPE_EGRESS_BYTES: '1'}

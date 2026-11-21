@@ -42,6 +42,8 @@ See [demo deployment and testing](docs/developer-guide/quickstart-demo.md) for c
 
 Documentation is under construction. Concepts, quickstart and client guides are now available in ./docs.
 
+To publish or migrate a browser app, see the [proposer pApp guide](docs/proposer-guide/papp.md).
+
 <!--
 ## Contributing
 

@@ -1,0 +1,21 @@
+image:
+  repository: ghcr.io/atticplaygroup/paid-services/user-server
+  tag: ""
+  pullPolicy: IfNotPresent
+port: 3002
+config:
+  indices: []
+  providerScorings: []
+  dailyBudget: "100000"
+  appPercentages: {}
+  proposerPercentages: {}
+# Secret with a config.json key containing the cashier JSON configuration.
+walletSecret: paid-user-wallet
+persistence:
+  size: 1Gi
+  storageClass: ""
+ingress:
+  enabled: false
+  className: ""
+  host: user.example.com
+  tlsSecret: ""

@@ -28,6 +28,14 @@ s3:
   existingSecret: "" # keys: accessKey, secretKey; s3.json if embedded S3 is enabled
   accessKey: ""
   secretKey: ""
+  directAccess:
+    enabled: true
+    region: us-east-1
+    # External S3 (or s3.existingSecret): provision a bucket-scoped read/list
+    # identity and supply its credentials here. Keys: accessKey, secretKey.
+    # Defaults to <s3.existingSecret or fullname-s3>-readonly.
+    # With chart-managed embedded S3, this Secret and identity are generated.
+    existingSecret: ""
   retentionRules:
     enabled: true
     schedule: "0 * * * *"
@@ -79,6 +87,12 @@ meter:
       - /account.v1.AccountService/CreditBalance
   priceSeed:
     entries:
+      # All direct S3 bucket/object paths share this gateway price schedule.
+      - key: p:s3
+        fields:
+          METER_TYPE_DURATION_MS: "1"
+          METER_TYPE_INGRESS_BYTES: "1"
+          METER_TYPE_EGRESS_BYTES: "1"
       - key: p:3:1
         fields:
           METER_TYPE_GET: "0"
@@ -87,3 +101,9 @@ meter:
         fields:
           METER_TYPE_GET: "0"
           METER_TYPE_SET: "0"
+
+# Browser CORS is handled by Envoy. "*" allows all origins; use exact origins
+# to restrict browser access, or [] to disable service CORS. PAID authentication still applies.
+# Public provider manifests remain readable across origins for discovery.
+cors:
+  allowOrigins: ["*"]

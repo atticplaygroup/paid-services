@@ -12,6 +12,8 @@ spec:
     matchLabels: { app: {{ include "kvstore.fullname" . }}-s3 }
   template:
     metadata:
+      annotations:
+        checksum/credentials: {{ include (print $.Template.BasePath "/secrets/s3.yaml") . | sha256sum }}
       labels: { app: {{ include "kvstore.fullname" . }}-s3 }
     spec:
       {{- with .Values.s3.securityContext }}

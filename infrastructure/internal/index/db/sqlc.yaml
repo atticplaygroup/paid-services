@@ -1,0 +1,10 @@
+version: '2'
+sql:
+  - engine: mysql
+    schema: schema.sql
+    queries: queries
+    gen:
+      go:
+        package: indexdb
+        out: sqlc
+        emit_interface: true

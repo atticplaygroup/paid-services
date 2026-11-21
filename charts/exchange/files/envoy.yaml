@@ -32,11 +32,45 @@ static_resources:
                   virtual_hosts:
                     - name: account
                       domains: {{ include "exchange.requiredAccountDomains" . }}
+                      {{- if .Values.cors.allowOrigins }}
+                      typed_per_filter_config:
+                        envoy.filters.http.cors:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                          allow_origin_string_match:
+                            {{- range .Values.cors.allowOrigins }}
+                            {{- if eq . "*" }}
+                            - safe_regex: { regex: ".*" }
+                            {{- else }}
+                            - exact: {{ . | quote }}
+                            {{- end }}
+                            {{- end }}
+                          allow_methods: "GET, POST, OPTIONS"
+                          allow_headers: "authorization, content-type, connect-protocol-version, connect-timeout-ms, grpc-timeout, x-grpc-web, x-user-agent, x-user-id, x-request-id, x-external-request-id"
+                          expose_headers: "grpc-status, grpc-message, grpc-status-details-bin, x-request-id"
+                          max_age: "600"
+                      {{- end }}
                       routes:
                         - match: { prefix: "/" }
                           route: { cluster: account, timeout: 120s }
                     - name: default
                       domains: ["*"]
+                      {{- if .Values.cors.allowOrigins }}
+                      typed_per_filter_config:
+                        envoy.filters.http.cors:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                          allow_origin_string_match:
+                            {{- range .Values.cors.allowOrigins }}
+                            {{- if eq . "*" }}
+                            - safe_regex: { regex: ".*" }
+                            {{- else }}
+                            - exact: {{ . | quote }}
+                            {{- end }}
+                            {{- end }}
+                          allow_methods: "GET, POST, OPTIONS"
+                          allow_headers: "authorization, content-type, connect-protocol-version, connect-timeout-ms, grpc-timeout, x-grpc-web, x-user-agent, x-user-id, x-request-id, x-external-request-id"
+                          expose_headers: "grpc-status, grpc-message, grpc-status-details-bin, x-request-id"
+                          max_age: "600"
+                      {{- end }}
                       routes:
                         - match:
                             path: "/.well-known/jwks.json"
@@ -62,6 +96,11 @@ static_resources:
                         - match: { prefix: "/" }
                           route: { cluster: exchange, timeout: 120s }
                 http_filters:
+                  {{- if .Values.cors.allowOrigins }}
+                  - name: envoy.filters.http.cors
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+                  {{- end }}
                   - name: envoy.filters.http.ext_authz
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz

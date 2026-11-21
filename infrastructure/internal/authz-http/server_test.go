@@ -133,3 +133,29 @@ func TestCheckAllowsDepositOrCreateAccountAtZeroBalance(t *testing.T) {
 		t.Fatalf("unexpected denial: %s", res.GetStatus().GetMessage())
 	}
 }
+
+func TestCORSHeadersDoNotBypassAuthentication(t *testing.T) {
+	srv, _ := setupAuthzServer(t)
+	for _, tc := range []struct {
+		name, method string
+		headers      map[string]string
+		allowed      bool
+	}{
+		{"preflight reaching authz", "OPTIONS", map[string]string{"origin": "null", "access-control-request-method": "POST"}, false},
+		{"bare options", "OPTIONS", nil, false},
+		{"actual RPC", "POST", map[string]string{"origin": "null", "access-control-request-method": "POST"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &authv3.CheckRequest{Attributes: &authv3.AttributeContext{Request: &authv3.AttributeContext_Request{Http: &authv3.AttributeContext_HttpRequest{
+				Method: tc.method, Scheme: "https", Host: "index.example", Path: "/index.v1.IndexService/SearchProvider", Headers: tc.headers,
+			}}}}
+			res, err := srv.Check(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (res.GetStatus().GetCode() == 0) != tc.allowed {
+				t.Fatalf("allowed=%v response=%v", tc.allowed, res)
+			}
+		})
+	}
+}

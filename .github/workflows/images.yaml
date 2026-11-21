@@ -63,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [infrastructure, cashier, outproxy, oci, mysql-tools, s3-retention-rules]
+        image: [infrastructure, cashier, outproxy, oci, mysql-tools, s3-retention-rules, user-server]
     steps:
       - uses: actions/checkout@v4
       - name: Log in to GHCR

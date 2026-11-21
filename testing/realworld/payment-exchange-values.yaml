@@ -1,0 +1,26 @@
+fullnameOverride: realworld-exchange
+databaseURL: postgres://postgres:realworld-test@realworld-postgres:5432/paid?sslmode=disable
+walletMnemonic: test test test test test test test test test test test junk
+suiNetwork: devnet
+tokenSigningSeed: '0x0000000000000000000000000000000000000000000000000000000000000001'
+tokenIssuer: https://exchange.realworld.test
+tokenCoinEnvironment: 2
+env:
+  accountDomains: [account.realworld-exchange-envoy, account.realworld-exchange-envoy.realworld-payments.svc.cluster.local]
+meter:
+  fullnameOverride: realworld-exchange-meter
+  exchangeDatabaseURL: postgres://postgres:realworld-test@realworld-postgres:5432/paid?sslmode=disable
+  account:
+    faucetMode: false
+    validCoinEnvironment: 2
+  authz:
+    allowZeroBalanceHTUs:
+      - /account.v1.AccountService/GetBalance
+      - /account.v1.AccountService/DepositOrCreateAccount
+      - /exchange.v1.ExchangeService/Ping
+      - /exchange.v1.ExchangeService/ListPaymentMethods
+      - /exchange.v1.ExchangeService/GetChallenge
+      - /exchange.v1.ExchangeService/Deposit
+
+cors:
+  allowOrigins: ["http://localhost:3001", "http://127.0.0.1:3001"]

@@ -3,7 +3,10 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY infrastructure/ ./infrastructure/
-RUN go build -o /kvstore ./infrastructure/cmd/kvstore && \
+COPY applications/mysql-http/ ./applications/mysql-http/
+RUN go build -o /mysql-http ./applications/mysql-http && \
+    go build -o /index ./infrastructure/cmd/index && \
+    go build -o /kvstore ./infrastructure/cmd/kvstore && \
     go build -o /deduction ./infrastructure/cmd/deduction && \
     go build -o /authz-http ./infrastructure/cmd/authz-http && \
     go build -o /account ./infrastructure/cmd/account && \
@@ -12,6 +15,8 @@ RUN go build -o /kvstore ./infrastructure/cmd/kvstore && \
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /mysql-http /mysql-http
+COPY --from=builder /index /index
 COPY --from=builder /kvstore /kvstore
 COPY --from=builder /deduction /deduction
 COPY --from=builder /authz-http /authz-http

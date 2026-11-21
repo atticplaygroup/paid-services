@@ -30,3 +30,37 @@ s3:
     storageSize: 20Gi
     accessKey: replica
     secretKey: change-me
+
+mysqlHttp:
+  enabled: false
+  image:
+    repository: ghcr.io/atticplaygroup/paid-services/infrastructure
+    tag: ""
+    pullPolicy: IfNotPresent
+  adminDsn: ""
+  access:
+    schemas: []
+    tables: {}
+  queryTimeout: 30s
+  maxResultBytes: 8388608
+
+fullnameOverride: ""
+env:
+  accountDomains: ["account.mysql"]
+  providerManifest: "{}"
+  deductionLogName: mysql_deduction
+  tlsSecretName: ""
+meter:
+  enabled: false
+  fullnameOverride: ""
+  redis:
+    enabled: false
+    seedJobEnabled: true
+    host: ""
+    address: ""
+
+# Browser CORS is handled by Envoy. "*" allows all origins; use exact origins
+# to restrict browser access, or [] to disable service CORS. PAID authentication still applies.
+# Public provider manifests remain readable across origins for discovery.
+cors:
+  allowOrigins: ["*"]

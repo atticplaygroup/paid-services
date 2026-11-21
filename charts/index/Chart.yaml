@@ -1,0 +1,14 @@
+apiVersion: v2
+name: index
+description: PAID routing index with Envoy gateway and metering
+type: application
+version: 0.1.0
+appVersion: "main"
+dependencies:
+  - name: meter
+    version: 0.1.0
+    repository: "file://../meter"
+    condition: meter.enabled
+  - name: mysql-http
+    version: 0.1.0
+    repository: "file://../mysql-http"

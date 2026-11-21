@@ -43,3 +43,7 @@
 {{- define "kvstore.s3Secret" -}}
 {{- .Values.s3.existingSecret | default (printf "%s-s3" (include "kvstore.fullname" .)) -}}
 {{- end -}}
+
+{{- define "kvstore.s3ReadOnlySecret" -}}
+{{- .Values.s3.directAccess.existingSecret | default (printf "%s-readonly" (include "kvstore.s3Secret" .)) -}}
+{{- end -}}

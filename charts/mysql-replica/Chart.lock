@@ -1,0 +1,9 @@
+dependencies:
+- name: mysql-http
+  repository: file://../mysql-http
+  version: 0.1.0
+- name: meter
+  repository: file://../meter
+  version: 0.1.0
+digest: sha256:1a8e4d6484447f2364951c061c50458d66a581e829a657f48d1523765506d657
+generated: "2026-10-26T16:03:19.439996261Z"

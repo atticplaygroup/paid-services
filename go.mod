@@ -6,12 +6,12 @@ require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260709200747-435963d16310.1
 	buf.build/go/protovalidate v1.2.0
 	connectrpc.com/connect v1.20.0
-	connectrpc.com/cors v0.1.0
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/MicahParks/jwkset v0.11.0
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/block-vision/sui-go-sdk v1.2.1
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
+	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/uuid v1.6.0
 	github.com/ipfs/boxo v0.41.0
 	github.com/ipfs/go-cid v0.6.2
@@ -23,10 +23,9 @@ require (
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.40.0
+	github.com/ory/dockertest/v3 v3.12.0
 	github.com/redis/go-redis/v9 v9.21.0
-	github.com/rs/cors v1.11.1
 	github.com/rubenv/sql-migrate v1.8.1
-	github.com/shurcooL/graphql v0.0.0-20240915155400-7ee5256398cf
 	github.com/spf13/viper v1.21.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800
 	google.golang.org/grpc v1.82.1
@@ -35,6 +34,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -52,7 +52,6 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.12.0 // indirect
-	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -77,7 +76,6 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/opencontainers/runc v1.2.3 // indirect
-	github.com/ory/dockertest/v3 v3.12.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rs/xid v1.6.0 // indirect

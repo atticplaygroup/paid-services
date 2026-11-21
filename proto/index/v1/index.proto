@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package index.v1;
+
+option go_package = "github.com/atticplaygroup/paid-services/infrastructure/pkg/proto/gen/go/index/v1;index";
+
+import "buf/validate/validate.proto";
+import "exchange/v1/exchange.proto";
+import "google/protobuf/timestamp.proto";
+
+message Behavior {
+  string name = 1 [(buf.validate.field).string = {min_len: 1, max_len: 256}];
+  string maintainer = 2 [(buf.validate.field).string = {min_len: 1, max_len: 128}];
+  string tag = 3 [(buf.validate.field).string = {min_len: 1, max_len: 128}];
+}
+message Variant {
+  string name = 1 [(buf.validate.field).string = {min_len: 1, max_len: 256}];
+  string maintainer = 2 [(buf.validate.field).string = {min_len: 1, max_len: 128}];
+  string tag = 3 [(buf.validate.field).string = {min_len: 1, max_len: 128}];
+}
+message Functionality {
+  Behavior behavior = 1 [(buf.validate.field).required = true];
+  Variant variant = 2 [(buf.validate.field).required = true];
+}
+message ProviderScore {
+  Functionality scoring_functionality = 1 [(buf.validate.field).required = true];
+  double score = 2 [(buf.validate.field).double.finite = true];
+}
+message Provider {
+  string origin = 1 [(buf.validate.field).string = {min_len: 1, max_len: 2048, uri: true}];
+  exchange.v1.CoinType coin_type = 2 [(buf.validate.field).enum = {defined_only: true, not_in: [0]}];
+  exchange.v1.CoinEnvironment coin_environment = 3 [(buf.validate.field).enum = {defined_only: true, not_in: [0]}];
+  repeated Provider exchanges = 4 [(buf.validate.field).repeated.max_items = 8];
+  int64 price = 5 [(buf.validate.field).int64.gte = 0];
+  google.protobuf.Timestamp update_time = 6 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp expire_time = 7 [(buf.validate.field).required = true];
+  // The provider identity, included in the signed registration.
+  string principal = 8 [(buf.validate.field).string = {min_len: 1, max_len: 128}];
+  // Output only: index assessments, identified by their scoring functionality.
+  repeated ProviderScore scores = 9;
+}
+message ProviderAdvertisement {
+  Functionality functionality = 1 [(buf.validate.field).required = true];
+  repeated Provider providers = 2 [(buf.validate.field).repeated = {min_items: 1, max_items: 32}];
+  string signature = 3 [(buf.validate.field).string = {min_len: 1, max_len: 1048576}];
+}
+// The JWS payload omits the signature and binds the advertisement to a domain.
+message SignedAdvertisement {
+  string v = 1 [(buf.validate.field).string.const = "paid.index.advertisement.v1"];
+  Functionality functionality = 2 [(buf.validate.field).required = true];
+  repeated Provider providers = 3 [(buf.validate.field).repeated = {min_items: 1, max_items: 32}];
+}
+message AdvertiseRequest {
+  ProviderAdvertisement advertisement = 1 [(buf.validate.field).required = true];
+}
+message AdvertiseResponse {
+  google.protobuf.Timestamp ingress_time = 1;
+}
+message SearchProviderRequest {
+  Functionality functionality = 1 [(buf.validate.field).required = true];
+  repeated Functionality provider_scorings = 2 [(buf.validate.field).repeated.max_items = 32];
+  int64 limit = 3 [(buf.validate.field).int64 = {gte: 0, lte: 100}];
+  string offset = 4 [(buf.validate.field).string = {max_len: 10, pattern: "^[0-9]*$"}];
+}
+message SearchProviderResponse {
+  repeated ProviderAdvertisement provider_advertisements = 1;
+  string next_offset = 2;
+}
+service IndexService {
+  rpc Advertise(AdvertiseRequest) returns (AdvertiseResponse);
+  rpc SearchProvider(SearchProviderRequest) returns (SearchProviderResponse);
+}

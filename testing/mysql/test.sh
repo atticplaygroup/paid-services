@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 source testing/shared/image-env.sh
 sed -e "s|local/|$IMAGE_PREFIX/|g" -e "s/:dev/:$IMAGE_TAG/g" testing/mysql/test-job.yaml | kubectl create -f -
-for ((attempt=0; attempt<125; attempt++)); do
+for ((attempt=0; attempt<245; attempt++)); do
   MYSQL_JOB_CONDITIONS=$(kubectl -n proposer-ns get job e2e-mysql -o jsonpath='{.status.conditions[*].type}')
   if [[ $MYSQL_JOB_CONDITIONS == *Complete* ]]; then
     kubectl -n proposer-ns logs job/e2e-mysql

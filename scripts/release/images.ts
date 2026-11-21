@@ -1,4 +1,4 @@
-export const images = ["infrastructure", "cashier", "outproxy", "oci", "mysql-tools", "s3-retention-rules"] as const
+export const images = ["infrastructure", "cashier", "outproxy", "oci", "mysql-tools", "s3-retention-rules", "user-server"] as const
 export const releaseVersion = /^v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/
 export const defaultPrefix = "ghcr.io/atticplaygroup/paid-services"
 

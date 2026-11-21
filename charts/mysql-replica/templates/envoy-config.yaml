@@ -1,0 +1,11 @@
+{{- if .Values.mysqlHttp.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mysql-replica.name" . }}-envoy-config
+  namespace: {{ .Release.Namespace }}
+data:
+  envoy.yaml: |
+{{ tpl (.Files.Get "files/envoy.yaml") . | nindent 4 }}
+
+{{- end }}

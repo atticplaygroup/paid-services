@@ -1,5 +1,8 @@
 # Proposer guide
 
+To publish a browser frontend or migrate an existing web app, start with
+[Run or migrate your application as a pApp](papp.md).
+
 ## Before you start
 
 Check if your application can be turned PAID:

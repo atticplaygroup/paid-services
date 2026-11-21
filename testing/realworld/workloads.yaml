@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: realworld-redis, namespace: puller-ns}
+spec:
+  selector: {matchLabels: {app: realworld-redis}}
+  template:
+    metadata: {labels: {app: realworld-redis}}
+    spec:
+      containers:
+        - name: redis
+          image: valkey/valkey:8-alpine
+          ports: [{containerPort: 6379}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: realworld-redis, namespace: puller-ns}
+spec:
+  selector: {app: realworld-redis}
+  ports: [{port: 6379}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: realworld-idp, namespace: pusher-ns}
+spec:
+  selector: {matchLabels: {app: realworld-idp}}
+  template:
+    metadata: {labels: {app: realworld-idp}}
+    spec:
+      containers:
+        - name: idp
+          image: local/realworld:dev
+          command: [bun, testing/shared/oidc-idp.ts]
+          env:
+            - {name: OIDC_ISSUER, value: 'http://localhost:4000'}
+            - {name: OIDC_CALLBACK, value: 'http://localhost:3001/callback'}
+          ports: [{containerPort: 4000}]
+          readinessProbe: {httpGet: {path: /healthz, port: 4000}}
+          volumeMounts: [{name: keys, mountPath: /etc/dpop-keys, readOnly: true}]
+      volumes:
+        - name: keys
+          secret: {secretName: e2e-dpop-keys}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: realworld-idp, namespace: pusher-ns}
+spec:
+  selector: {app: realworld-idp}
+  ports: [{port: 4000}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: realworld-proposer, namespace: pusher-ns}
+spec:
+  selector: {matchLabels: {app: realworld-proposer}}
+  template:
+    metadata: {labels: {app: realworld-proposer}}
+    spec:
+      containers:
+        - name: api
+          image: local/realworld:dev
+          command: [bun, examples/realworld/server.ts]
+          env:
+            - {name: MYSQL_URL, value: 'mysql://root:root@mysql-proposer.pusher-ns.svc.cluster.local:3306/realworld'}
+            - {name: OIDC_ISSUER, value: 'http://localhost:4000'}
+            - {name: OIDC_BACKCHANNEL_URL, value: 'http://realworld-idp.pusher-ns.svc.cluster.local:4000'}
+          ports: [{containerPort: 3000}]
+          readinessProbe: {httpGet: {path: /healthz, port: 3000}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: realworld-proposer, namespace: pusher-ns}
+spec:
+  selector: {app: realworld-proposer}
+  ports: [{port: 3000}]

@@ -4,3 +4,11 @@ description: Replica MySQL, ORAS unpacker, and importer
 type: application
 version: 0.1.0
 appVersion: "main"
+dependencies:
+  - name: mysql-http
+    version: 0.1.0
+    repository: "file://../mysql-http"
+  - name: meter
+    version: 0.1.0
+    repository: "file://../meter"
+    condition: meter.enabled

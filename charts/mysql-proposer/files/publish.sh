@@ -1,6 +1,18 @@
 #!/bin/bash
 set -euo pipefail
+# A same-party OCI conversion application accepts internal caller headers.
+# External registry authentication remains the responsibility of outproxy.
+oras() {
+  local headers=() request_id
+  if [[ -n ${OCI_USER_ID:-} ]]; then
+    read -r request_id < /proc/sys/kernel/random/uuid
+    headers=(--header "x-user-id:$OCI_USER_ID" --header "x-request-id:$request_id")
+  fi
+  command oras "$@" "${headers[@]}"
+}
 publish_artifact() (
+  # Bash otherwise clears errexit inside digest=$(publish_artifact).
+  set -euo pipefail
   : "${OCI_ADDRESS:?}" "${ARTIFACT_REPO:?}" "${ARTIFACT_KIND:?}"
   config=$(mktemp)
   layers=$(mktemp)

@@ -19,53 +19,22 @@ func TestProtectedKvStore(t *testing.T) {
 	ctx := protectedCtx("alice")
 	ttl := time.Hour
 
-	t.Run("selfReadPutGet", func(t *testing.T) {
+	t.Run("removedAuthorizationModeRejected", func(t *testing.T) {
 		md := &pb.ValueMetadata{
-			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ,
+			AuthorizationMode: pb.AuthorizationMode(3), // Reserved, no longer supported.
 			Codec:             pb.Codec_CODEC_RAW,
 		}
-		const key = "notes/a"
-		payload := []byte("secret-for-alice")
-
-		resp, err := p.Put(ctx, md, key, payload, ttl)
-		if err != nil {
-			t.Fatalf("Put: %v", err)
+		if _, err := p.Put(ctx, md, "removed-mode", []byte("x"), ttl); err == nil {
+			t.Fatal("Put with removed authorization mode: want error")
 		}
-		wantName := utils.FormatProtectedName("alice", key)
-		if resp.Name != wantName {
-			t.Fatalf("Name=%q want %q", resp.Name, wantName)
-		}
-
-		got, err := p.Get(ctx, "alice", key)
-		if err != nil {
-			t.Fatalf("Get: %v", err)
-		}
-		if !bytes.Equal(got, payload) {
-			t.Fatalf("Get=%q want %q", got, payload)
+		if _, err := p.PutStream(ctx, md, "removed-mode-stream", strings.NewReader("x"), ttl); err == nil {
+			t.Fatal("PutStream with removed authorization mode: want error")
 		}
 	})
 
-	t.Run("selfReadDeniesOtherUser", func(t *testing.T) {
+	t.Run("publicReadRequiresSession", func(t *testing.T) {
 		md := &pb.ValueMetadata{
-			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ,
-			Codec:             pb.Codec_CODEC_RAW,
-		}
-		const key = "notes/b"
-		if _, err := p.Put(ctx, md, key, []byte("x"), ttl); err != nil {
-			t.Fatalf("Put: %v", err)
-		}
-		other := protectedCtx("bob")
-		if _, err := p.Get(other, "alice", key); err == nil {
-			t.Fatal("bob reading alice key: want error")
-		}
-		if err := p.ExtendTtl(other, "alice", key, ttl); err == nil {
-			t.Fatal("bob ExtendTtl: want unauthorized")
-		}
-	})
-
-	t.Run("selfReadRequiresSession", func(t *testing.T) {
-		md := &pb.ValueMetadata{
-			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ,
+			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ,
 			Codec:             pb.Codec_CODEC_RAW,
 		}
 		meterOnly := middleware.WithMeter(context.Background(), middleware.NewMeter("anon"))
@@ -115,7 +84,7 @@ func TestProtectedKvStore(t *testing.T) {
 	t.Run("putGetStream", func(t *testing.T) {
 		payload := "streamed-protected"
 		md := &pb.ValueMetadata{
-			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ,
+			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ,
 			Codec:             pb.Codec_CODEC_RAW,
 		}
 		const key = "notes/stream"
@@ -142,7 +111,7 @@ func TestProtectedKvStore(t *testing.T) {
 
 	t.Run("ttl", func(t *testing.T) {
 		md := &pb.ValueMetadata{
-			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_SELF_READ,
+			AuthorizationMode: pb.AuthorizationMode_AUTHORIZATION_MODE_PUBLIC_READ,
 			Codec:             pb.Codec_CODEC_RAW,
 		}
 		const key = "notes/ttl"

@@ -9,6 +9,8 @@ spec:
     matchLabels: { app: {{ include "kvstore.fullname" . }}-envoy }
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmaps/envoy-config.yaml") . | sha256sum }}
       labels: { app: {{ include "kvstore.fullname" . }}-envoy }
     spec:
       containers:
@@ -16,6 +18,15 @@ spec:
           image: "{{ .Values.envoyImage.repository }}:{{ .Values.envoyImage.tag }}"
           imagePullPolicy: {{ .Values.envoyImage.pullPolicy }}
           args: ["-c", "/etc/envoy/envoy.yaml"]
+          {{- if .Values.s3.directAccess.enabled }}
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: {{ include "kvstore.s3ReadOnlySecret" . }}, key: accessKey } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ include "kvstore.s3ReadOnlySecret" . }}, key: secretKey } }
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+          {{- end }}
           ports:
             - { name: http, containerPort: 8080 }
             {{- if .Values.env.tlsSecretName }}

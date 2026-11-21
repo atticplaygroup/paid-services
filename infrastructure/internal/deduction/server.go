@@ -135,6 +135,11 @@ func getDPoPEntryIO(e *datalogv3.HTTPAccessLogEntry) *entryIO {
 
 func formatDPoPKey(e *datalogv3.HTTPAccessLogEntry) (string, error) {
 	c := e.GetCommonProperties()
+	// A provider's route metadata can group arbitrary object paths under one
+	// price schedule. This tag is supplied by Envoy, never a client header.
+	if service := c.GetCustomTags()["meter_service"]; service != "" {
+		return "p:" + service, nil
+	}
 	hostname := c.GetTlsProperties().GetTlsSniHostname()
 	port := c.GetDownstreamLocalAddress().GetSocketAddress().GetPortValue()
 	path := e.GetRequest().GetPath()

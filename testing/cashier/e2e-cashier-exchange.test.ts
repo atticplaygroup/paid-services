@@ -70,7 +70,7 @@ async function seedAccount(principal: string) {
   if (result.exitCode !== 0) throw new Error(result.stderr.toString())
 }
 
-describe("Feature 5: production exchange chart", () => {
+describe("Cashier: production exchange chart", () => {
   let principal: string
 
   it("seeds the PostgreSQL account fixture", async () => {

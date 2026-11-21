@@ -1,4 +1,5 @@
 import { createOciApp } from "./server.js"
+import { createOutproxyFetch } from "./outproxy.js"
 import { KvstoreClient } from "./storage/kvstore.js"
 import { MeterClient } from "./meter.js"
 import { validateMnemonic } from "@scure/bip39"
@@ -56,7 +57,7 @@ async function loadDpopKeypair(): Promise<CryptoKeyPair | undefined> {
 }
 
 const dpopKeypair = await loadDpopKeypair()
-const kvstore = new KvstoreClient(kvstoreAddress, dpopKeypair, outproxyAddress)
+const kvstore = new KvstoreClient(kvstoreAddress, dpopKeypair, outproxyAddress ? createOutproxyFetch(outproxyAddress) : undefined)
 const meter = new MeterClient({
   deductionAddress,
   defaultAmount: deductionAmount,

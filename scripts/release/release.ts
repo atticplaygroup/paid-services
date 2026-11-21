@@ -4,10 +4,10 @@ import { defaultPrefix, images, validatePrefix, validateVersion } from "./images
 
 const root = resolve(import.meta.dir, "../..")
 export const chartImages: Record<string, string> = {
-  cashier: "cashier", exchange: "infrastructure", kvstore: "infrastructure", meter: "infrastructure",
+  "user-server": "user-server", cashier: "cashier", exchange: "infrastructure", kvstore: "infrastructure", meter: "infrastructure", index: "infrastructure",
   "mysql-proposer": "mysql-tools", "mysql-replica": "mysql-tools", oci: "oci",
 }
-const chartNames = [...Object.keys(chartImages), "outproxy-with-faucet"]
+const chartNames = [...Object.keys(chartImages), "outproxy-with-faucet", "mysql-http"]
 
 export function stageCharts(version: string, destination: string, prefix = defaultPrefix) {
   validateVersion(version)
@@ -28,10 +28,14 @@ export function stageCharts(version: string, destination: string, prefix = defau
     if (name === "outproxy-with-faucet") {
       values.outproxyImage = `${prefix}/outproxy:${version}`
       values.cashierImage = `${prefix}/cashier:${version}`
-    } else {
-      const key = name === "oci" ? "ociImage" : "image"
+    } else if (name !== "mysql-http") {
+      const key = ["oci", "index"].includes(name) ? `${name}Image` : "image"
       values[key].repository = `${prefix}/${chartImages[name]}`
       values[key].tag = version
+    }
+    if (values.mysqlHttp) {
+      values.mysqlHttp.image.repository = `${prefix}/infrastructure`
+      values.mysqlHttp.image.tag = version
     }
     if (name === "kvstore") {
       values.s3.retentionRules.image.repository = `${prefix}/s3-retention-rules`
@@ -39,7 +43,7 @@ export function stageCharts(version: string, destination: string, prefix = defau
     }
     writeFileSync(valuesPath, Bun.YAML.stringify(values))
   }
-  return chartNames.map(name => join(destination, name))
+  return chartNames.filter(name => name !== "mysql-http").map(name => join(destination, name))
 }
 
 function command(args: string[]) {

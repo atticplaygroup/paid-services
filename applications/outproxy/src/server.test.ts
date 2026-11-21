@@ -10,6 +10,8 @@ import * as dpop from "dpop"
 import { deriveCashierPrincipal } from "./identity.js"
 import { CID } from "multiformats/cid"
 import { create as createDigest } from "multiformats/hashes/digest"
+import { request } from "node:http"
+import { once } from "node:events"
 
 const seed = new Uint8Array(32).fill(7)
 
@@ -124,6 +126,41 @@ describe("outproxy direct and cashier modes", () => {
     expect(await deriveCashierPrincipal(TEST_MNEMONIC, CASHIER_ACCOUNT_SALT)).toBe(expected)
     expect(await deriveCashierPrincipal(TEST_MNEMONIC, "other-cashier")).not.toBe(expected)
     expect(await deriveCashierPrincipal("test test test test test test test test test test test junk", CASHIER_ACCOUNT_SALT)).not.toBe(expected)
+  })
+})
+
+describe("outproxy HTTP transport", () => {
+  it("preserves HEAD object size metadata without sending a response body", async () => {
+    const { main } = await import("./server.js")
+    const server = await main({
+      listenAddr: ":0",
+      dpopMasterSecret: TEST_MNEMONIC,
+      fetchFn: (async (_input, init) => {
+        expect(init?.method).toBe("HEAD")
+        expect(new Headers(init?.headers).get("authorization")).toMatch(/^Bearer /)
+        return new Response(null, { headers: { "content-length": "256", etag: '"object-etag"' } })
+      }) as typeof fetch,
+    })
+    try {
+      if (!server.listening) await once(server, "listening")
+      const address = server.address()
+      if (!address || typeof address === "string") throw new Error("missing proxy port")
+      const response = await new Promise<{ headers: Record<string, unknown>, body: string }>((resolve, reject) => {
+        const req = request({ host: "127.0.0.1", port: address.port, method: "HEAD", path: "http://provider.example/object" }, res => {
+          let body = ""
+          res.on("data", chunk => { body += chunk.toString() })
+          res.on("end", () => resolve({ headers: res.headers, body }))
+          res.on("error", reject)
+        })
+        req.on("error", reject)
+        req.end()
+      })
+      expect(response.headers["content-length"]).toBe("256")
+      expect(response.headers.etag).toBe('"object-etag"')
+      expect(response.body).toBe("")
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    }
   })
 })
 

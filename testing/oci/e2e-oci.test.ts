@@ -4,6 +4,9 @@ import { createHash } from "crypto"
 import { CID } from "multiformats/cid"
 import { create } from "multiformats/hashes/digest"
 import Redis from "ioredis"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 async function computePrincipal(pubJwk: JsonWebKey): Promise<string> {
   const canonical = JSON.stringify({ crv: pubJwk.crv, kty: pubJwk.kty, x: pubJwk.x, y: pubJwk.y })
@@ -58,6 +61,7 @@ describe("e2e-kind: Pusher pushes image directly to storage provider", () => {
     pullerKeypair = await loadKeypairFromPath(pullerKeyPath)
     const pullerPubJwk = await crypto.subtle.exportKey("jwk", pullerKeypair.publicKey)
     pullerPrincipal = await computePrincipal(pullerPubJwk)
+    expect(pullerPrincipal).not.toBe(pusherPrincipal)
     console.log("Puller principal:", pullerPrincipal)
 
     // Load OCI provider's keypair
@@ -195,6 +199,90 @@ describe("e2e-kind: Pusher pushes image directly to storage provider", () => {
     console.log("Puller: manifest pulled and verified")
   }, 60_000)
 
+  it("Native AWS CLI reads S3 through outproxy, pays for usage, and cannot mutate objects", async () => {
+    const cid = CID.create(1, 0x55, create(0x12, new Uint8Array(Buffer.from(blobDigest.slice(7), "hex")))).toString()
+    const key = `user/public/value/${cid}`
+    const objectUrl = `${STORAGE_PROVIDER_ENVOY_URL}/applications/${key}`
+    const anonymous = await fetch(objectUrl)
+    expect([401, 403]).toContain(anonymous.status)
+    await anonymous.body?.cancel()
+
+    const unfundedKeypair = await generateKeyPair("ES256")
+    const unpaid = await fetch(objectUrl, {
+      headers: { Authorization: `Bearer ${await generateProof(unfundedKeypair, objectUrl, "GET")}` },
+    })
+    expect(unpaid.status).toBe(403)
+    await unpaid.body?.cancel()
+
+    const account = async (method: string, body: object = {}) => {
+      const response = await fetch(`${STORAGE_PROVIDER_ENVOY_URL}/account.v1.AccountService/${method}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        proxy: PULLER_OUTPROXY_URL,
+      } as any)
+      if (!response.ok) throw new Error(`${method}: ${response.status} ${await response.text()}`)
+      return response.json()
+    }
+    await account("CreditBalance", { amount: 1_000_000_000 })
+    const before = BigInt((await account("GetBalance")).balance)
+    const directory = await mkdtemp(join(tmpdir(), "paid-s3-"))
+    const aws = async (...args: string[]) => {
+      const process = Bun.spawn(["aws", "--no-sign-request", "--region", "us-east-1", "--endpoint-url", STORAGE_PROVIDER_ENVOY_URL, "s3api", ...args], {
+        env: {
+          ...Bun.env,
+          HTTP_PROXY: PULLER_OUTPROXY_URL,
+          HTTPS_PROXY: PULLER_OUTPROXY_URL,
+          NO_PROXY: "",
+          no_proxy: "",
+          AWS_EC2_METADATA_DISABLED: "true",
+          AWS_MAX_ATTEMPTS: "1",
+          AWS_PAGER: "",
+        },
+        stdout: "pipe", stderr: "pipe",
+      })
+      const [exitCode, stdout, stderr] = await Promise.all([process.exited, new Response(process.stdout).text(), new Response(process.stderr).text()])
+      return { exitCode, stdout, stderr }
+    }
+    try {
+      const download = await aws("get-object", "--bucket", "applications", "--key", key, join(directory, "blob"))
+      expect(download.stderr).toBe("")
+      expect(download.exitCode).toBe(0)
+      expect(new Uint8Array(await readFile(join(directory, "blob")))).toEqual(blobContent)
+
+      // Check the actual caller's balance, not just the presence of access logs.
+      let after = before
+      for (let attempt = 0; attempt < 30 && after === before; attempt++) {
+        await sleep(200)
+        after = BigInt((await account("GetBalance")).balance)
+      }
+      expect(after).toBeLessThan(before)
+
+      const listing = await aws("list-objects-v2", "--bucket", "applications", "--prefix", key)
+      expect(listing.exitCode).toBe(0)
+      expect(JSON.parse(listing.stdout).Contents.some((object: { Key: string }) => object.Key === key)).toBe(true)
+      const head = await aws("head-object", "--bucket", "applications", "--key", key)
+      expect(head.exitCode).toBe(0)
+      expect(JSON.parse(head.stdout).ContentLength).toBe(blobContent.length)
+      const range = await aws("get-object", "--bucket", "applications", "--key", key, "--range", "bytes=16-31", join(directory, "range"))
+      expect(range.exitCode).toBe(0)
+      expect(new Uint8Array(await readFile(join(directory, "range")))).toEqual(blobContent.slice(16, 32))
+
+      await writeFile(join(directory, "replacement"), "must not be written")
+      const overwrite = await aws("put-object", "--bucket", "applications", "--key", key, "--body", join(directory, "replacement"))
+      expect(overwrite.exitCode).not.toBe(0)
+      expect(overwrite.stderr).toContain("AccessDenied")
+      const deletion = await aws("delete-object", "--bucket", "applications", "--key", key)
+      expect(deletion.exitCode).not.toBe(0)
+      expect(deletion.stderr).toContain("AccessDenied")
+      const unchanged = await aws("get-object", "--bucket", "applications", "--key", key, join(directory, "unchanged"))
+      expect(unchanged.exitCode).toBe(0)
+      expect(new Uint8Array(await readFile(join(directory, "unchanged")))).toEqual(blobContent)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }, 60_000)
+
   it("Puller pull deduction changes when OCI provider unit prices change", async () => {
     const faucetOciProviderUrl = `${OCI_PROVIDER_ENVOY_URL}/account.v1.AccountService/CreditBalance`
     const faucetOciProviderProof = await generateProof(pullerKeypair, faucetOciProviderUrl, "POST")
@@ -238,6 +326,15 @@ describe("e2e-kind: Pusher pushes image directly to storage provider", () => {
       if (res.status !== 200) {
         throw new Error(`pull failed: ${res.status} ${await res.text()}`)
       }
+      const body = await res.arrayBuffer()
+      // Metering includes response headers. In particular, Envoy's upstream
+      // timing header can change length even when the manifest is identical.
+      // Fixed HTTP framing cancels when comparing these two successful pulls.
+      let responseBytes = body.byteLength
+      for (const [name, value] of res.headers) {
+        responseBytes += Buffer.byteLength(name) + Buffer.byteLength(value)
+      }
+      return responseBytes
     }
     const waitForBalanceChange = async (initialBalance: number) => {
       for (let attempt = 0; attempt < 30; attempt++) {
@@ -268,7 +365,7 @@ describe("e2e-kind: Pusher pushes image directly to storage provider", () => {
     await setPrice("METER_TYPE_INGRESS_BYTES", "1")
     await setPrice("METER_TYPE_EGRESS_BYTES", "1")
     const balanceBeforeLow = await waitForBalanceToSettle()
-    await pull()
+    const lowResponseBytes = await pull()
     await waitForBalanceChange(balanceBeforeLow)
     const balanceAfterLow = await waitForBalanceToSettle()
     const lowDeduction = balanceBeforeLow - balanceAfterLow
@@ -278,13 +375,15 @@ describe("e2e-kind: Pusher pushes image directly to storage provider", () => {
     await setPrice("METER_TYPE_INGRESS_BYTES", "10")
     await setPrice("METER_TYPE_EGRESS_BYTES", "10")
     const balanceBeforeHigh = await waitForBalanceToSettle()
-    await pull()
+    const highResponseBytes = await pull()
     await waitForBalanceChange(balanceBeforeHigh)
     const balanceAfterHigh = await waitForBalanceToSettle()
     const highDeduction = balanceBeforeHigh - balanceAfterHigh
     expect(highDeduction).toBeGreaterThan(lowDeduction)
-    expect(highDeduction).toBe(lowDeduction * 10)
-    console.log("Puller pull deductions:", { lowDeduction, highDeduction })
+    const inflation = 100_000
+    const responseByteDifference = highResponseBytes - lowResponseBytes
+    expect(highDeduction).toBe((lowDeduction + responseByteDifference * inflation) * 10)
+    console.log("Puller pull deductions:", { lowDeduction, highDeduction, lowResponseBytes, highResponseBytes })
   }, 60_000)
 
   it("Meter feedback works with deterministic external request ID", async () => {

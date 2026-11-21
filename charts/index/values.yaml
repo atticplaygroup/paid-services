@@ -1,0 +1,42 @@
+fullnameOverride: ""
+indexImage:
+  repository: ghcr.io/atticplaygroup/paid-services/infrastructure
+  tag: ""
+  pullPolicy: IfNotPresent
+env:
+  enabledScorers: []
+  mysqlDsn: ""
+  trustedIndices: []
+  outproxyAddress: ""
+  outproxyCaSecretName: ""
+  providerManifest: "{}"
+  deductionLogName: index_deduction
+  accountDomains: ["account.index"]
+  tlsSecretName: ""
+meter:
+  enabled: true
+  fullnameOverride: ""
+  redis:
+    enabled: false
+    seedJobEnabled: true
+    host: ""
+    address: ""
+
+mysqlHttp:
+  enabled: false
+  image:
+    repository: ghcr.io/atticplaygroup/paid-services/infrastructure
+    tag: ""
+    pullPolicy: IfNotPresent
+  adminDsn: ""
+  access:
+    schemas: []
+    tables: {}
+  queryTimeout: 30s
+  maxResultBytes: 8388608
+
+# Browser CORS is handled by Envoy. "*" allows all origins; use exact origins
+# to restrict browser access, or [] to disable service CORS. PAID authentication still applies.
+# Public provider manifests remain readable across origins for discovery.
+cors:
+  allowOrigins: ["*"]

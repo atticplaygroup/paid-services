@@ -111,7 +111,7 @@ function rows(side: "proposer" | "replica") {
   return sql(side, "SELECT * FROM user_profile.users ORDER BY id")
 }
 
-describe("Feature 4: MySQL baseline and delta replication through OCI", () => {
+describe("MySQL baseline and delta replication through OCI", () => {
   beforeAll(async () => {
     for (const side of ["proposer", "replica"] as const) {
       const deadline = Date.now() + 120_000
@@ -438,7 +438,8 @@ fi
       await schedulePublisher("delta", false)
       await schedule("replica-ns", "mysql-replica-sync", false)
       await schedule("replica-ns", "mysql-replica-importer", false)
-      const deadline = Date.now() + 180_000
+      // Publisher, sync, and importer each tick once per minute; allow their full pipeline.
+      const deadline = Date.now() + 300_000
       while (Date.now() < deadline) {
         try { replica = rows("replica"); if (replica === expected) break } catch {}
         await sleep(2000)
@@ -451,7 +452,7 @@ fi
       await schedule("replica-ns", "mysql-replica-importer", true)
       await schedule("replica-ns", "mysql-replica-sync", true)
     }
-  }, 240_000)
+  }, 420_000)
 
   it("scheduled replica follows newer deltas without a new baseline", async () => {
     await schedulePublisher("baseline", true)
@@ -466,7 +467,8 @@ fi
       await schedulePublisher("delta", false)
       await schedule("replica-ns", "mysql-replica-sync", false)
       await schedule("replica-ns", "mysql-replica-importer", false)
-      const deadline = Date.now() + 180_000
+      // Publisher, sync, and importer each tick once per minute; allow their full pipeline.
+      const deadline = Date.now() + 300_000
       while (Date.now() < deadline) {
         try { if (rows("replica") === expected) break } catch {}
         await sleep(2000)
@@ -479,7 +481,7 @@ fi
       await schedule("replica-ns", "mysql-replica-importer", true)
       await schedule("replica-ns", "mysql-replica-sync", true)
     }
-  }, 240_000)
+  }, 420_000)
 
   it("restores baseline, waits for missing deltas after MySQL expiration, then resumes replay", async () => {
     const retention = sql("proposer", "SELECT @@GLOBAL.binlog_expire_logs_seconds")

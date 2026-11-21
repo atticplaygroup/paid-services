@@ -1,0 +1,200 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: index-ns}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mysql, namespace: index-ns}
+spec:
+  selector: {matchLabels: {app: mysql}}
+  template:
+    metadata: {labels: {app: mysql}}
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          env:
+            - {name: MYSQL_ROOT_PASSWORD, value: routing-root}
+            - {name: MYSQL_DATABASE, value: routing}
+            - {name: MYSQL_USER, value: routing}
+            - {name: MYSQL_PASSWORD, value: routing-password}
+          ports: [{containerPort: 3306}]
+          readinessProbe:
+            exec: {command: [mysqladmin, ping, -h, '127.0.0.1', -prouting-root]}
+            initialDelaySeconds: 10
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata: {name: mysql, namespace: index-ns}
+spec:
+  selector: {app: mysql}
+  ports: [{port: 3306, targetPort: 3306}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: redis, namespace: index-ns}
+spec:
+  selector: {matchLabels: {app: redis}}
+  template:
+    metadata: {labels: {app: redis}}
+    spec:
+      containers:
+        - {name: redis, image: 'valkey/valkey:8-alpine', ports: [{containerPort: 6379}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: redis, namespace: index-ns}
+spec:
+  selector: {app: redis}
+  ports: [{port: 6379, targetPort: 6379}]
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: dead-low-ns}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: dead-envoy, namespace: dead-low-ns}
+data:
+  envoy.yaml: |
+    static_resources:
+      listeners:
+        - name: ingress
+          address:
+            socket_address: {address: 0.0.0.0, port_value: 8080}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: dead_provider
+                    access_log:
+                      - name: envoy.access_loggers.stdout
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                    route_config:
+                      name: dead
+                      virtual_hosts:
+                        - name: dead
+                          domains: ["*"]
+                          routes:
+                            - match: {prefix: "/"}
+                              route: {cluster: unavailable, timeout: 1s}
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters:
+        - name: unavailable
+          connect_timeout: 0.1s
+          type: STATIC
+          load_assignment:
+            cluster_name: unavailable
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address: {address: 127.0.0.1, port_value: 1}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dead-low-envoy, namespace: dead-low-ns}
+spec:
+  selector: {matchLabels: {app: dead-envoy}}
+  template:
+    metadata: {labels: {app: dead-envoy}}
+    spec:
+      containers:
+        - name: envoy
+          image: envoyproxy/envoy:v1.33.0
+          args: ["-c", "/etc/envoy/envoy.yaml", "--concurrency", "2"]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            tcpSocket: {port: http}
+          volumeMounts: [{name: config, mountPath: /etc/envoy}]
+      volumes:
+        - name: config
+          configMap: {name: dead-envoy}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: dead-low-envoy, namespace: dead-low-ns}
+spec:
+  selector: {app: dead-envoy}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: dead-high-ns}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: dead-envoy, namespace: dead-high-ns}
+data:
+  envoy.yaml: |
+    static_resources:
+      listeners:
+        - name: ingress
+          address:
+            socket_address: {address: 0.0.0.0, port_value: 8080}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: dead_provider
+                    access_log:
+                      - name: envoy.access_loggers.stdout
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                    route_config:
+                      name: dead
+                      virtual_hosts:
+                        - name: dead
+                          domains: ["*"]
+                          routes:
+                            - match: {prefix: "/"}
+                              route: {cluster: unavailable, timeout: 1s}
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+      clusters:
+        - name: unavailable
+          connect_timeout: 0.1s
+          type: STATIC
+          load_assignment:
+            cluster_name: unavailable
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address: {address: 127.0.0.1, port_value: 1}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dead-high-envoy, namespace: dead-high-ns}
+spec:
+  selector: {matchLabels: {app: dead-envoy}}
+  template:
+    metadata: {labels: {app: dead-envoy}}
+    spec:
+      containers:
+        - name: envoy
+          image: envoyproxy/envoy:v1.33.0
+          args: ["-c", "/etc/envoy/envoy.yaml", "--concurrency", "2"]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            tcpSocket: {port: http}
+          volumeMounts: [{name: config, mountPath: /etc/envoy}]
+      volumes:
+        - name: config
+          configMap: {name: dead-envoy}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: dead-high-envoy, namespace: dead-high-ns}
+spec:
+  selector: {app: dead-envoy}
+  ports: [{name: http, port: 8080, targetPort: http}]

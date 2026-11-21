@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "@paid/client-auth",
+      "dependencies": {
+        "dpop": "^2.1.1",
+      },
+    },
+  },
+  "packages": {
+    "dpop": ["dpop@2.1.2", "", {}, "sha512-hN3XjjCcgYWmNL8DFAV1Z3alXIvLolvjis189NI/U4k4Iu/m4rBeUYObbIjnRzQYDQv4zMaXXskjVDqSkmyh7Q=="],
+  }
+}
