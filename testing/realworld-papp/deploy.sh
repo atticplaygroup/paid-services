@@ -30,13 +30,12 @@ helm upgrade --install realworld-proposer charts/mysql-proposer -n pusher-ns --r
 kubectl -n pusher-ns rollout status statefulset/mysql-proposer --timeout=300s
 kubectl -n pusher-ns rollout status deployment/realworld-baseapp --timeout=180s
 kubectl -n pusher-ns rollout status deployment/realworld-idp --timeout=180s
-# Bootstrap once after the mutation application has installed its schema.
+# Bootstrap after the publisher has checked schema readiness and cleaned its work directory.
 # Subsequent deltas use the normal publisher scheduler, once a minute here.
 kubectl -n pusher-ns exec mysql-proposer-0 -c publisher -- bash -euc '
-  export MYSQL_PWD="$MYSQL_PASSWORD"
   deadline=$((SECONDS + 120))
-  until mysql -h "$MYSQL_HOST" -P "$MYSQL_PORT" -u "$MYSQL_USER" -Nse "$PUBLICATION_READY_QUERY" >/dev/null 2>&1; do
-    if (( SECONDS >= deadline )); then echo "Timed out waiting for the RealWorld schema" >&2; exit 1; fi
+  until [[ $(< /proc/1/comm) == supercronic ]]; do
+    if (( SECONDS >= deadline )); then echo "Timed out waiting for the MySQL publisher scheduler" >&2; exit 1; fi
     sleep 2
   done
   PUBLISH_MODE=baseline /usr/local/bin/publish.sh
